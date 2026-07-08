@@ -1,0 +1,18 @@
+server:
+  port: "8080" 
+
+mysql:
+  host: "127.0.0.1"
+  port: "3306"
+  user: "root"
+  password: "" # 占位，真实密码由环境变量 DB_PASSWORD 注入
+  db_name: "live_stream"
+  charset: "utf8mb4"
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime: 3600
+  # 1 hour
+
+jwt:
+  secret: "dev-secret" # 
+  expires_hours: 2 # access token 有效期（小时）

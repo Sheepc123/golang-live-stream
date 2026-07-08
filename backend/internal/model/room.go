@@ -1,21 +1,11 @@
 package model
 
-import "time"
+import (
+	"time"
 
-// Room represents the internal live room entity
-type Room struct {
-	ID          int64
-	Title       string
-	ChannelName string
-	Category    string
-	CoverURL    string
-	StreamURL   string
-	Description string
-	Status      string
-	ViewerCount int64
-	CreatedAt   time.Time
-	UpdateAt    time.Time
-}
+	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
+)
+
 
 // RoomResponse represents the response for frontend
 type RoomResponse struct {
@@ -37,7 +27,7 @@ type RoomListResponse struct {
 	Total int            `json:"total"`
 }
 
-func NewRoomResponse(room *Room) RoomResponse {
+func NewRoomResponse(room *entity.Room) RoomResponse {
 	return RoomResponse{
 		ID:          room.ID,
 		Title:       room.Title,

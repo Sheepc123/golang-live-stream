@@ -6,6 +6,7 @@ import (
 
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/model"
+	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	"github.com/Sheepc123/golang-live-stream/internal/service"
 	"github.com/gin-gonic/gin"
@@ -23,7 +24,7 @@ func NewRoomHandler(r *service.RoomService) *RoomHandler {
 
 // List Room handles GET/api/v1/rooms
 func (h *RoomHandler) ListRoom(c *gin.Context) {
-	rooms, err := h.roomService.RoomList()
+	rooms, err := h.roomService.RoomList(c.Request.Context())
 
 	if err != nil {
 		response.Fail(c, 404, errno.InternalServerError.Code, errno.InvalidRequest.Msg, gin.H{})
@@ -53,11 +54,11 @@ func (h *RoomHandler) GetRoomByID(c *gin.Context) {
 		return
 	}
 
-	room, err := h.roomService.GetRoomByID(id)
+	room, err := h.roomService.GetRoomByID(c.Request.Context(), id)
 
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrRoomNotFound):
+		case errors.Is(err, repo.ErrRoomNotFound):
 			response.Fail(c, 404, errno.RoomNotFound.Code, errno.RoomNotFound.Msg, gin.H{})
 		default:
 			response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
@@ -65,5 +66,5 @@ func (h *RoomHandler) GetRoomByID(c *gin.Context) {
 		return
 	}
 
-	response.Ok(c, room)
+	response.Ok(c, model.NewRoomResponse(room))
 }

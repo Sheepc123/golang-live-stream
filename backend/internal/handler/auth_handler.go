@@ -17,7 +17,7 @@ type AuthHandler struct {
 	authService *service.AuthService
 }
 
-// NewAuthHandler creates an AuthHandler with its required dependencies.
+// NewAuthHandler creates an AuthcHandler with its required dependencies.
 func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
@@ -35,7 +35,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	loginResp, err := h.authService.LoginService(&req)
+	loginResp, err := h.authService.LoginService(c.Request.Context(), &req)
 
 	if err != nil {
 		switch {

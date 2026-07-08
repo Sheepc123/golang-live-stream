@@ -50,4 +50,9 @@ var (
 		Code: 40008,
 		Msg:  "Room not found",
 	}
+
+	WSInvalidRoomID = ErrorCode{
+		Code: 40009,
+		Msg:  "Websocket Room_id is invalid",
+	}
 )

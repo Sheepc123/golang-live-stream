@@ -1,24 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import DanmakuInput from '@/components/DanmakuInput.vue'
+import DanmakuList from '@/components/DanmakuList.vue'
+import { LiveSocket, type LiveSocketStatus, type WSMessage } from '@/utils/liveSocket'
 
 const route = useRoute()
 const router = useRouter()
 
-/**
- * 后端统一响应格式。
- */
 interface ApiResponse<T> {
   code: number
   msg: string
   data: T
 }
 
-/**
- * 前端页面最终使用的直播间数据结构。
- *
- * 这里统一使用前端更容易理解的字段名。
- */
 interface Room {
   id: number
   title: string
@@ -32,13 +27,6 @@ interface Room {
   createdAt: string
 }
 
-/**
- * 后端单个直播间接口当前可能返回的是 Go 结构体默认字段：
- * ID、Title、ChannelName、CoverURL...
- *
- * 后面更推荐后端 GetRoomByID 也返回 RoomResponse，
- * 这样列表接口和详情接口字段就统一了。
- */
 interface BackendRoom {
   ID?: number
   Title?: string
@@ -67,39 +55,25 @@ const room = ref<Room | null>(null)
 const loading = ref(false)
 const errorMsg = ref('')
 
-/**
- * 从路由参数中拿直播间 ID。
- *
- * 路由后面会写成：
- * /rooms/:room_id
- */
+const liveSocket = ref<LiveSocket | null>(null)
+const wsStatus = ref<LiveSocketStatus>('disconnected')
+const messages = ref<WSMessage[]>([])
+const onlineCount = ref(0)
+
 const roomID = computed(() => {
   const value = route.params.room_id
-
-  if (Array.isArray(value)) {
-    return value[0]
-  }
-
-  return value
+  return Array.isArray(value) ? value[0] : value
 })
 
-/**
- * 生成后端 JWT 中间件需要的请求头内容。
- */
 function getAuthorizationHeader() {
   const token = localStorage.getItem('token')
   const tokenType = localStorage.getItem('token_type') || 'Bearer'
 
-  if (!token) {
-    return null
-  }
+  if (!token) return null
 
   return `${tokenType} ${token}`
 }
 
-/**
- * 清理登录状态。
- */
 function clearAuthStorage() {
   localStorage.removeItem('token')
   localStorage.removeItem('token_type')
@@ -108,21 +82,11 @@ function clearAuthStorage() {
   localStorage.removeItem('user')
 }
 
-/**
- * 回到登录页。
- */
 function goLogin() {
   clearAuthStorage()
   router.push('/login')
 }
 
-/**
- * 把后端返回的数据转换成前端页面统一使用的数据。
- *
- * 这样做的原因：
- * 当前列表接口返回的是 cover_url 这种字段；
- * 但单个详情接口可能返回 CoverURL 这种字段。
- */
 function normalizeRoom(data: BackendRoom): Room {
   return {
     id: data.id ?? data.ID ?? 0,
@@ -138,12 +102,6 @@ function normalizeRoom(data: BackendRoom): Room {
   }
 }
 
-/**
- * 请求单个直播间详情。
- *
- * 对应后端接口：
- * GET /api/v1/rooms/:room_id
- */
 async function fetchRoomDetail() {
   const authorization = getAuthorizationHeader()
 
@@ -188,15 +146,71 @@ async function fetchRoomDetail() {
   }
 }
 
-/**
- * 返回直播间首页。
- */
+function createLocalMessage(type: 'system' | 'error', content: string): WSMessage {
+  return {
+    type,
+    room_id: Number(roomID.value) || 0,
+    user_id: 0,
+    username: 'system',
+    content,
+    timestamp: Math.floor(Date.now() / 1000),
+  }
+}
+
+function appendMessage(msg: WSMessage) {
+  messages.value.push(msg)
+}
+
+function handleSocketMessage(msg: WSMessage) {
+  if (msg.type === 'online_count') {
+    onlineCount.value = Number(msg.content)
+    return
+  }
+
+  if (msg.type === 'heartbeat') return
+
+  appendMessage(msg)
+}
+
+function connectWebSocket() {
+  if (!roomID.value) return
+
+  liveSocket.value = new LiveSocket({
+    roomID: roomID.value,
+    onStatusChange: (status) => {
+      wsStatus.value = status
+    },
+    onMessage: handleSocketMessage,
+    onInvalidMessage: () => {
+      appendMessage(createLocalMessage('error', '收到一条无法解析的 WebSocket 消息'))
+    },
+  })
+
+  liveSocket.value.connect()
+}
+
+function sendMessage(content: string) {
+  if (!content) return
+
+  liveSocket.value?.sendChat(content)
+}
+
+function closeWebSocket() {
+  liveSocket.value?.close()
+  liveSocket.value = null
+}
+
 function goHome() {
-  router.push('/home')
+  router.push('/rooms')
 }
 
 onMounted(() => {
   fetchRoomDetail()
+  connectWebSocket()
+})
+
+onUnmounted(() => {
+  closeWebSocket()
 })
 </script>
 
@@ -221,14 +235,31 @@ onMounted(() => {
       直播间加载中...
     </p>
 
-    <article v-else-if="room" class="room-detail">
-      <section class="player-area">
-        <video
-          class="video-player"
-          :src="room.streamURL"
-          :poster="room.coverURL"
-          controls
-        ></video>
+    <article v-else-if="room" class="room-page-content">
+      <section class="watch-layout">
+        <section class="player-panel">
+          <video
+            class="video-player"
+            :src="room.streamURL"
+            :poster="room.coverURL"
+            controls
+          ></video>
+        </section>
+
+        <aside class="chat-panel">
+          <div class="chat-header">
+            <strong>弹幕</strong>
+            <span>连接状态：{{ wsStatus }}</span>
+            <span>在线人数：{{ onlineCount }}</span>
+          </div>
+
+          <DanmakuList :messages="messages" />
+
+          <DanmakuInput
+            :disabled="wsStatus !== 'connected'"
+            @send="sendMessage"
+          />
+        </aside>
       </section>
 
       <section class="info-area">
@@ -280,15 +311,15 @@ onMounted(() => {
 <style scoped>
 .detail-page {
   min-height: 100vh;
-  padding: 32px;
+  padding: 24px 24px 48px;
   background: #f5f7fb;
 }
 
 .page-header,
-.room-detail,
+.room-page-content,
 .error-message,
 .state-text {
-  max-width: 1180px;
+  width: min(1760px, calc(100vw - 48px));
   margin-left: auto;
   margin-right: auto;
 }
@@ -335,15 +366,33 @@ onMounted(() => {
   color: #858a9f;
 }
 
-.room-detail {
+.room-page-content {
+  display: block;
+}
+
+.watch-layout {
+  display: grid;
+  /*
+   * 左侧放直播画面，右侧放弹幕。
+   * 右侧弹幕给固定的舒适宽度，左侧播放器吃掉剩余空间。
+   * 这样在宽屏 Web 页面上，直播画面会真正变大。
+   */
+  grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 430px);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.player-panel,
+.info-area,
+.chat-panel {
   overflow: hidden;
   border: 1px solid #e5e8f0;
-  border-radius: 16px;
+  border-radius: 12px;
   background: #ffffff;
   box-shadow: 0 18px 50px rgba(35, 44, 85, 0.1);
 }
 
-.player-area {
+.player-panel {
   background: #111827;
 }
 
@@ -355,7 +404,8 @@ onMounted(() => {
 }
 
 .info-area {
-  padding: 24px;
+  margin-top: 16px;
+  padding: 22px 24px;
 }
 
 .title-row {
@@ -416,9 +466,39 @@ dd {
   word-break: break-all;
 }
 
+.chat-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chat-header {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+  color: #6874e8;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .watch-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 640px) {
   .detail-page {
     padding: 22px;
+  }
+
+  .page-header,
+  .room-page-content,
+  .error-message,
+  .state-text {
+    width: calc(100vw - 44px);
   }
 
   .page-header {
@@ -433,5 +513,6 @@ dd {
   .info-area h2 {
     font-size: 24px;
   }
+
 }
 </style>

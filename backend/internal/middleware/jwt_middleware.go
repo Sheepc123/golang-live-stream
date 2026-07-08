@@ -3,13 +3,12 @@ package middleware
 import (
 	"strings"
 
+	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	Jwttoken "github.com/Sheepc123/golang-live-stream/internal/token"
 	"github.com/gin-gonic/gin"
 )
-
-const jwtSecret = "dev-secret"
 
 // RespFail Process the Unauthorized Error.
 func respFail(c *gin.Context) {
@@ -18,7 +17,7 @@ func respFail(c *gin.Context) {
 }
 
 // JWTAuth Verifies the access token before handlers run.
-func JWTAuth() gin.HandlerFunc {
+func JWTAuth(Cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 
@@ -34,6 +33,8 @@ func JWTAuth() gin.HandlerFunc {
 			respFail(c)
 			return
 		}
+
+		jwtSecret := Cfg.JWT.Secret
 
 		claims, err := Jwttoken.ParseAccessToken(parts[1], jwtSecret)
 
