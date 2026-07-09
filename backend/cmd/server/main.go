@@ -28,10 +28,10 @@ func main() {
 	}
 	log.Printf("successfully migrate database")
 
-	if err := infra.Seed(db); err != nil {
-		log.Fatalf("failed to seed database : %v", err)
-	}
-	log.Printf("successfully seed database")
+	// if err := infra.Seed(db); err != nil {
+	// 	log.Fatalf("failed to seed database : %v", err)
+	// }
+	// log.Printf("successfully seed database")
 
 	r := router.NewRouter(cfg, db)
 

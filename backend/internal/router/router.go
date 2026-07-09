@@ -20,6 +20,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	// repo initalize
 	userRepo := repo.NewUserRepo(db)
 	roomRepo := repo.NewRoomRepo(db)
+	msgRepo := repo.NewMesRep(db)
 
 	// auth function
 	authService := service.NewAuthService(cfg.JWT, userRepo)
@@ -29,6 +30,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	// roomService function
 	roomService := service.NewRoomService(roomRepo)
 	roomHandler := handler.NewRoomHandler(roomService)
+
+	// Message function
+	msgService := service.NewMsgService(msgRepo)
+	msgHandler := handler.NewMsgHandler(msgService)
 
 	// websocket funciton
 	wsManager := ws.NewManager()
@@ -59,6 +64,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 				rooms.GET("", roomHandler.ListRoom)
 
 				rooms.GET("/:id", roomHandler.GetRoomByID)
+
+				rooms.GET("/:id/messages", msgHandler.History)
 			}
 
 		}

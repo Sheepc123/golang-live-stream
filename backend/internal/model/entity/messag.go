@@ -4,7 +4,7 @@ import "time"
 
 type Message struct {
 	ID int64 `gorm:"primaryKey;autoIncrement"`
-
+	
 	RoomID int64 `gorm:"index;not null"`
 
 	UserID   int64  `gorm:"not null"`
