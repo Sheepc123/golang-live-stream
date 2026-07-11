@@ -69,8 +69,15 @@ func seedUserS(db *gorm.DB) error {
 }
 
 func seedRooms(db *gorm.DB) error {
+
+	var owner entity.User
+	if err := db.Where("username = ?", "admin0").First(&owner).Error; err != nil {
+		return fmt.Errorf("seed rooms: find owner admin0: %w", err)
+	}
+
 	rooms := []entity.Room{
 		{
+			OwnerId:     owner.ID,
 			Title:       "Music Live",
 			ChannelName: "Time Music",
 			Category:    "Music",
@@ -81,6 +88,7 @@ func seedRooms(db *gorm.DB) error {
 			ViewerCount: 1280,
 		},
 		{
+			OwnerId:     owner.ID,
 			Title:       "Game Arena",
 			ChannelName: "Time Gaming",
 			Category:    "Gaming",
@@ -91,6 +99,7 @@ func seedRooms(db *gorm.DB) error {
 			ViewerCount: 3421,
 		},
 		{
+			OwnerId:     owner.ID,
 			Title:       "Tech Talk",
 			ChannelName: "Time Tech",
 			Category:    "Technology",

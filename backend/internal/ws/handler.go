@@ -23,14 +23,18 @@ var upgrader = websocket.Upgrader{
 }
 
 type WSHandler struct {
-	manager   *Manager
-	jwtSecret string
+	manager     *Manager
+	jwtSecret   string
+	registry    *ActionRegistry
+	LikeCounter *LikeCounter
 }
 
-func NewWShandler(m *Manager, jwtcfg config.JWTConfig) *WSHandler {
+func NewWShandler(m *Manager, jwtcfg config.JWTConfig, registry *ActionRegistry, LikeCounter *LikeCounter) *WSHandler {
 	return &WSHandler{
-		manager:   m,
-		jwtSecret: jwtcfg.Secret,
+		manager:     m,
+		jwtSecret:   jwtcfg.Secret,
+		registry:    registry,
+		LikeCounter: LikeCounter,
 	}
 }
 
@@ -47,21 +51,18 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 
 	// get userId and Username through token
 	claims, err := Jwttoken.ParseAccessToken(accessToken, h.jwtSecret)
-
 	if err != nil {
 		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
 		return
 	}
 
 	roomId, err := strconv.ParseInt(c.Param("room_id"), 10, 64)
-
 	if err != nil {
 		response.Fail(c, 400, errno.WSInvalidRoomID.Code, errno.WSInvalidRoomID.Msg, gin.H{})
 		return
 	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-
 	if err != nil {
 		log.Printf("websocket upgrade fail: %v", err)
 		return
@@ -94,6 +95,13 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 
 	log.Printf("User join the live stream room: room_id = %d,user_id = %d,username = %v", roomId, userId, username)
 
+	// Show the history like number
+	currentLikeCount := h.LikeCounter.GetHistoryLike(roomId)
+
+	likeCountMsg := NewLikeMessageCount(roomId, currentLikeCount)
+	client.Send <- likeCountMsg
+
+
 	// Broadcast join message
 	joinMsg := NewJoinMessage(userId, roomId, username)
 	h.manager.BroadcastToRoom(joinMsg.RoomID, joinMsg)
@@ -105,6 +113,6 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 	// starts a new goroutine to send message to the client
 	go client.WritePump()
 	// read the data from client and block until the connection drops
-	client.ReadPump(h.manager)
+	client.ReadPump(h.registry)
 
 }

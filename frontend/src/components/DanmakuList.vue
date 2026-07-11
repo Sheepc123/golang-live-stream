@@ -22,6 +22,12 @@ function formatMessageContent(msg: WSMessage) {
       return `${msg.username || '匿名用户'} 进入了直播间`
     case 'leave':
       return `${msg.username || '匿名用户'} 离开了直播间`
+    case 'like':
+      // 点赞用户身份来自后端验证后的 WebSocket Client。
+      // 不直接依赖后端的英文 Content，前端统一展示中文文案。
+      return `${msg.username || '匿名用户'} 点了一个赞`
+    case 'like_count':
+      return `当前点赞数：${msg.content}`
     case 'system':
       return msg.content || '系统消息'
     case 'error':
@@ -36,6 +42,8 @@ function formatMessageType(type: WSMessage['type']) {
     join: '进入',
     leave: '离开',
     chat: '弹幕',
+    like: '点赞',
+    like_count: '赞数',
     heartbeat: '心跳',
     online_count: '人数',
     system: '系统',
@@ -62,8 +70,8 @@ watch(
     </p>
 
     <div
-      v-for="msg in messages"
-      :key="`${msg.timestamp}-${msg.user_id}-${msg.content}`"
+      v-for="(msg, index) in messages"
+      :key="`${msg.timestamp}-${msg.user_id}-${msg.type}-${index}`"
       :class="['message-item', `message-${msg.type}`]"
     >
       <span class="message-type">{{ formatMessageType(msg.type) }}</span>
@@ -140,6 +148,15 @@ watch(
 .message-system .message-type {
   color: #2563eb;
   background: rgba(37, 99, 235, 0.1);
+}
+
+.message-like {
+  color: #d6336c;
+}
+
+.message-like .message-type {
+  color: #d6336c;
+  background: rgba(214, 51, 108, 0.1);
 }
 
 .message-error {

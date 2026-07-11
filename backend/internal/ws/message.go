@@ -19,6 +19,8 @@ const (
 	MessageTypeSystem      = "system"
 	MessageTypeError       = "error"
 	MessageTypeOnlineCount = "online_count"
+	MessageTypeLike        = "like"
+	MessageTypeLikeCount   = "like_count"
 )
 
 // Message represents the message in websocket.
@@ -88,6 +90,20 @@ func NewHeartBeatMessage(roomID int64) Message {
 // NewOnlineCountMessage create a online count message
 func NewOnlineCountMessage(roomID int64, count int) Message {
 	msg := newMessage(roomID, MessageTypeOnlineCount)
+	msg.Content = fmt.Sprintf("%d", count)
+	return msg
+}
+
+func NewLikeMessage(roomId int64, userId int64, username string) Message {
+	msg := newMessage(roomId, MessageTypeLike)
+	msg.UserID = userId
+	msg.Username = username
+	msg.Content = fmt.Sprintf("user: %s liked the stream ", username)
+	return msg
+}
+
+func NewLikeMessageCount(roomId int64, count int64) Message {
+	msg := newMessage(roomId, MessageTypeLikeCount)
 	msg.Content = fmt.Sprintf("%d", count)
 	return msg
 }

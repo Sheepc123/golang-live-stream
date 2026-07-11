@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DanmakuInput from '@/components/DanmakuInput.vue'
 import DanmakuList from '@/components/DanmakuList.vue'
+import DanmakuScreen from '@/components/DanmakuScreen.vue'
 import { LiveSocket, type LiveSocketStatus, type WSMessage } from '@/utils/liveSocket'
 
 const route = useRoute()
@@ -17,38 +18,29 @@ interface ApiResponse<T> {
 interface Room {
   id: number
   title: string
-  anchorName: string
+  anchor_name: string
   category: string
-  coverURL: string
-  streamURL: string
+  cover_url: string
+  stream_url: string
   description: string
   status: string
-  viewerCount: number
-  createdAt: string
+  viewer_count: number
+  created_at: string
 }
 
-interface BackendRoom {
-  ID?: number
-  Title?: string
-  ChannelName?: string
-  Category?: string
-  CoverURL?: string
-  StreamURL?: string
-  Description?: string
-  Status?: string
-  ViewerCount?: number
-  CreatedAt?: string
+interface HistoryMessage {
+  id: number
+  room_id: number
+  user_id: number
+  username: string
+  content: string
+  type: string
+  timestamp: number
+}
 
-  id?: number
-  title?: string
-  anchor_name?: string
-  category?: string
-  cover_url?: string
-  stream_url?: string
-  description?: string
-  status?: string
-  viewer_count?: number
-  created_at?: string
+interface HistoryListResponse {
+  messages: HistoryMessage[]
+  total: number
 }
 
 const room = ref<Room | null>(null)
@@ -59,6 +51,27 @@ const liveSocket = ref<LiveSocket | null>(null)
 const wsStatus = ref<LiveSocketStatus>('disconnected')
 const messages = ref<WSMessage[]>([])
 const onlineCount = ref(0)
+
+// 当前房间的权威点赞总数。
+// 页面不在本地执行 likeCount++，而是等待后端的 like_count 消息，
+// 避免断线、重连或漏消息后与后端计数不一致。
+const likeCount = ref(0)
+
+// 弹幕飘屏组件的实例引用。
+// 通过它调用子组件 defineExpose 出来的 push 方法，让弹幕飞过视频。
+const danmakuScreenRef = ref<InstanceType<typeof DanmakuScreen> | null>(null)
+
+// 视频当前是否处于暂停状态，传给飘屏组件，暂停时弹幕一起冻结。
+// 由 video 的 @play / @pause 事件在模板里直接切换。
+const videoPaused = ref(false)
+
+// 弹幕字号（像素）。提供「小 / 中 / 大」三档，默认中。
+const danmakuFontSize = ref(20)
+const fontSizeOptions = [
+  { label: '小', value: 16 },
+  { label: '中', value: 20 },
+  { label: '大', value: 26 },
+]
 
 const roomID = computed(() => {
   const value = route.params.room_id
@@ -87,20 +100,49 @@ function goLogin() {
   router.push('/login')
 }
 
-function normalizeRoom(data: BackendRoom): Room {
-  return {
-    id: data.id ?? data.ID ?? 0,
-    title: data.title ?? data.Title ?? '',
-    anchorName: data.anchor_name ?? data.ChannelName ?? '',
-    category: data.category ?? data.Category ?? '',
-    coverURL: data.cover_url ?? data.CoverURL ?? '',
-    streamURL: data.stream_url ?? data.StreamURL ?? '',
-    description: data.description ?? data.Description ?? '',
-    status: data.status ?? data.Status ?? '',
-    viewerCount: data.viewer_count ?? data.ViewerCount ?? 0,
-    createdAt: data.created_at ?? data.CreatedAt ?? '',
+async function fetchHistoryMessages() {
+  const authorization = getAuthorizationHeader()
+  if (!authorization) return
+  if (!roomID.value) return
+
+  try {
+    const res = await fetch(`/api/v1/rooms/${roomID.value}/messages?limit=50`, {
+      method: 'GET',
+      headers: {
+        Authorization: authorization,
+      },
+    })
+
+    // token 失效直接回登录页
+    if (res.status === 401) {
+      goLogin()
+      return
+    }
+
+    const result = (await res.json()) as ApiResponse<HistoryListResponse>
+    if (result.code !== 0) return
+
+    // 把后端的 HistoryMessage 转成前端统一用的 WSMessage 结构。
+    // 后端返回的 type 是 string，这里断言成 WSMessage['type']。
+    const historyList: WSMessage[] = result.data.messages.map((item) => ({
+      type: item.type as WSMessage['type'],
+      room_id: item.room_id,
+      user_id: item.user_id,
+      username: item.username,
+      content: item.content,
+      timestamp: item.timestamp,
+    }))
+
+    // 教学要点：历史弹幕要放在最前面。
+    // 因为后端已经按时间正序返回了（老的在前、新的在后），
+    // 直接赋值给 messages，后续 WebSocket 收到的新弹幕会 push 到后面，
+    // 时间顺序刚好正确。
+    messages.value = historyList
+  } catch {
+    // 拉历史失败不影响看直播和发新弹幕，静默处理即可。
   }
 }
+
 
 async function fetchRoomDetail() {
   const authorization = getAuthorizationHeader()
@@ -131,14 +173,14 @@ async function fetchRoomDetail() {
       return
     }
 
-    const result = (await res.json()) as ApiResponse<BackendRoom>
+    const result = (await res.json()) as ApiResponse<Room>
 
     if (result.code !== 0) {
       errorMsg.value = result.msg || '获取直播间详情失败'
       return
     }
 
-    room.value = normalizeRoom(result.data)
+    room.value = result.data
   } catch {
     errorMsg.value = '无法连接服务器，请确认后端是否已经启动'
   } finally {
@@ -167,7 +209,23 @@ function handleSocketMessage(msg: WSMessage) {
     return
   }
 
+  // like_count 是房间状态，只更新点赞数字，不进入聊天消息列表。
+  if (msg.type === 'like_count') {
+    const nextLikeCount = Number(msg.content)
+
+    if (Number.isFinite(nextLikeCount)) {
+      likeCount.value = nextLikeCount
+    }
+
+    return
+  }
+
   if (msg.type === 'heartbeat') return
+
+  // 只有聊天弹幕才飘屏，join/leave/system 等只进侧边栏列表，不飞过视频。
+  if (msg.type === 'chat') {
+    danmakuScreenRef.value?.push(msg.content)
+  }
 
   appendMessage(msg)
 }
@@ -195,6 +253,12 @@ function sendMessage(content: string) {
   liveSocket.value?.sendChat(content)
 }
 
+// 发送一次点赞动作。
+// 页面不直接修改 likeCount，后端计数成功并广播 like_count 后再更新。
+function sendLike() {
+  liveSocket.value?.sendLike()
+}
+
 function closeWebSocket() {
   liveSocket.value?.close()
   liveSocket.value = null
@@ -204,14 +268,19 @@ function goHome() {
   router.push('/rooms')
 }
 
-onMounted(() => {
-  fetchRoomDetail()
+onMounted(async () => {
+  await fetchRoomDetail()
+
+  if (!room.value) return
+
+  await fetchHistoryMessages()
+
   connectWebSocket()
 })
-
 onUnmounted(() => {
   closeWebSocket()
 })
+
 </script>
 
 <template>
@@ -240,10 +309,20 @@ onUnmounted(() => {
         <section class="player-panel">
           <video
             class="video-player"
-            :src="room.streamURL"
-            :poster="room.coverURL"
+            :src="room.stream_url"
+            :poster="room.cover_url"
             controls
+            @play="videoPaused = false"
+            @pause="videoPaused = true"
           ></video>
+
+          <!-- 弹幕飘屏层：绝对定位覆盖在视频之上，pointer-events:none 不挡视频操作 -->
+          <!-- paused 传视频暂停状态；font-size 传当前字号，切换即时生效 -->
+          <DanmakuScreen
+            ref="danmakuScreenRef"
+            :paused="videoPaused"
+            :font-size="danmakuFontSize"
+          />
         </section>
 
         <aside class="chat-panel">
@@ -251,6 +330,34 @@ onUnmounted(() => {
             <strong>弹幕</strong>
             <span>连接状态：{{ wsStatus }}</span>
             <span>在线人数：{{ onlineCount }}</span>
+
+            <div class="like-control">
+              <button
+                class="like-button"
+                type="button"
+                :disabled="wsStatus !== 'connected'"
+                aria-label="给当前直播间点赞"
+                @click="sendLike"
+              >
+                ❤ 点赞
+              </button>
+
+              <span class="like-count">{{ likeCount }} 个赞</span>
+            </div>
+
+            <!-- 字号切换：点击按钮切换飘屏弹幕字号，选中项高亮 -->
+            <div class="font-size-switch">
+              <span>字号</span>
+              <button
+                v-for="option in fontSizeOptions"
+                :key="option.value"
+                type="button"
+                :class="{ active: danmakuFontSize === option.value }"
+                @click="danmakuFontSize = option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
           </div>
 
           <DanmakuList :messages="messages" />
@@ -269,14 +376,14 @@ onUnmounted(() => {
           </span>
 
           <span class="viewer-count">
-            {{ room.viewerCount }} 人观看
+            {{ room.viewer_count }} 人观看
           </span>
         </div>
 
         <h2>{{ room.title }}</h2>
 
         <p class="anchor">
-          主播：{{ room.anchorName }}
+          主播：{{ room.anchor_name }}
         </p>
 
         <p class="description">
@@ -291,12 +398,12 @@ onUnmounted(() => {
 
           <div>
             <dt>直播流地址</dt>
-            <dd>{{ room.streamURL }}</dd>
+            <dd>{{ room.stream_url }}</dd>
           </div>
 
           <div>
             <dt>创建时间</dt>
-            <dd>{{ room.createdAt }}</dd>
+            <dd>{{ room.created_at }}</dd>
           </div>
         </dl>
       </section>
@@ -393,6 +500,8 @@ onUnmounted(() => {
 }
 
 .player-panel {
+  /* 作为弹幕飘屏层(绝对定位 inset:0)的定位父容器 */
+  position: relative;
   background: #111827;
 }
 
@@ -481,6 +590,63 @@ dd {
   gap: 6px;
   color: #6874e8;
   font-size: 14px;
+}
+
+.like-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.like-button {
+  padding: 6px 14px;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  background: #ef476f;
+  transition:
+    transform 0.15s,
+    opacity 0.15s;
+}
+
+.like-button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.02);
+}
+
+.like-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.like-count {
+  color: #ef476f;
+  font-weight: 700;
+}
+
+/* 字号切换：一行排列的小按钮 */
+.font-size-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.font-size-switch button {
+  padding: 2px 10px;
+  color: #6874e8;
+  border: 1px solid #d9deea;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #ffffff;
+}
+
+/* 当前选中的字号按钮高亮 */
+.font-size-switch button.active {
+  color: #ffffff;
+  border-color: #6874e8;
+  background: #6874e8;
 }
 
 @media (max-width: 900px) {

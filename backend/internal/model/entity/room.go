@@ -4,6 +4,7 @@ import "time"
 
 type Room struct {
 	ID          int64  `gorm:"primaryKey;autoIncrement"`
+	OwnerId     int64  `gorm:"index;not null"`
 	Title       string `gorm:"size:128;not null"`
 	ChannelName string `gorm:"size:64;not null"`
 	Category    string `gorm:"size:32"`

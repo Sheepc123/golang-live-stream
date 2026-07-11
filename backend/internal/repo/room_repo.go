@@ -13,6 +13,11 @@ var ErrRoomNotFound = errors.New("room not found")
 type RoomRepo interface {
 	RoomList(ctx context.Context) ([]entity.Room, error)
 	FindByRoomID(ctx context.Context, id int64) (*entity.Room, error)
+
+	ListMyRoom(ctx context.Context, OwnerID int64) ([]entity.Room, error)
+	Create(ctx context.Context, room *entity.Room) error
+	Update(ctx context.Context, room *entity.Room) error
+	Delete(ctx context.Context, id int64) error
 }
 
 type roomRepo struct {
@@ -48,4 +53,28 @@ func (r *roomRepo) FindByRoomID(ctx context.Context, id int64) (*entity.Room, er
 		return nil, err
 	}
 	return &room, nil
+}
+
+func (r *roomRepo) ListMyRoom(ctx context.Context, OwnerID int64) ([]entity.Room, error) {
+	var myrooms []entity.Room
+
+	err := r.db.WithContext(ctx).Where("owner_id = ?", OwnerID).Order("id desc").Find(&myrooms).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return myrooms, nil
+}
+
+func (r *roomRepo) Create(ctx context.Context, room *entity.Room) error {
+
+	return r.db.WithContext(ctx).Create(room).Error
+}
+
+func (r *roomRepo) Update(ctx context.Context, room *entity.Room) error {
+	return r.db.WithContext(ctx).Save(room).Error
+}
+
+func (r *roomRepo) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(&entity.Room{}, id).Error
 }

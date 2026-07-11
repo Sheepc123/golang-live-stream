@@ -27,7 +27,7 @@ func (h *RoomHandler) ListRoom(c *gin.Context) {
 	rooms, err := h.roomService.RoomList(c.Request.Context())
 
 	if err != nil {
-		response.Fail(c, 404, errno.InternalServerError.Code, errno.InvalidRequest.Msg, gin.H{})
+		response.Fail(c, 404, errno.RoomListNotFound.Code, errno.RoomListNotFound.Msg, gin.H{})
 		return
 	}
 
@@ -67,4 +67,136 @@ func (h *RoomHandler) GetRoomByID(c *gin.Context) {
 	}
 
 	response.Ok(c, model.NewRoomResponse(room))
+}
+
+// GETMineRoom handler GET /api/v1/rooms/mine
+func (h *RoomHandler) ListMyRoom(c *gin.Context) {
+
+	ownerId, exits := getContextValue[int64](c, "user_id")
+
+	if !exits {
+		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
+		return
+	}
+
+	rooms, err := h.roomService.ListMyRoom(c.Request.Context(), ownerId)
+
+	if err != nil {
+		response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
+		return
+	}
+
+	roomsRepose := make([]model.RoomResponse, 0, len(rooms))
+
+	for i := range rooms {
+		roomsRepose = append(roomsRepose, model.NewRoomResponse(&rooms[i]))
+	}
+	response.Ok(c, model.RoomListResponse{
+		Rooms: roomsRepose,
+		Total: len(roomsRepose),
+	})
+}
+
+// createRoom handle POST /api/v1/rooms
+func (h *RoomHandler) CreatRoom(c *gin.Context) {
+	ownerId, ok := getContextValue[int64](c, "user_id")
+
+	if !ok {
+		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
+		return
+	}
+
+	var req model.CreateRoomRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
+		return
+	}
+
+	room, err := h.roomService.Create(c.Request.Context(), ownerId, &req)
+
+	if err != nil {
+		response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
+		return
+	}
+
+	response.Ok(c, model.NewRoomResponse(room))
+}
+
+// UpdateRoom handle PUT /api/v1/rooms/id
+func (h *RoomHandler) UpdateRoom(c *gin.Context) {
+	ownerId, ok := getContextValue[int64](c, "user_id")
+
+	if !ok {
+		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
+		return
+	}
+
+	RoomId, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
+		return
+	}
+
+	var req model.UpdateRoomRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
+		return
+	}
+
+	room, err := h.roomService.UpdateRoom(c.Request.Context(), ownerId, RoomId, &req)
+
+	if err != nil {
+		// a. Room not found   404
+		// b. This user do not have the authority ,Forbidden 403
+		// c. others
+
+		switch {
+		case errors.Is(err, repo.ErrRoomNotFound):
+
+			response.Fail(c, 404, errno.RoomNotFound.Code, errno.RoomNotFound.Msg, gin.H{})
+		case errors.Is(err, service.ErrRoomForbidden):
+			response.Fail(c, 403, errno.Forbidden.Code, errno.Forbidden.Msg, gin.H{})
+		default:
+			response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
+		}
+		return
+
+	}
+	response.Ok(c, model.NewRoomResponse(room))
+
+}
+
+// DeleteRoom handle DELETE /api/v1/rooms/:id
+func (h *RoomHandler) DeleteRoom(c *gin.Context) {
+	ownerId, ok := getContextValue[int64](c, "user_id")
+
+	if !ok {
+		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
+		return
+	}
+
+	RoomId, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
+		return
+	}
+
+	err = h.roomService.DeleteRoom(c.Request.Context(), ownerId, RoomId)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, repo.ErrRoomNotFound):
+			response.Fail(c, 404, errno.RoomNotFound.Code, errno.RoomNotFound.Msg, gin.H{})
+		case errors.Is(err, service.ErrRoomForbidden):
+			response.Fail(c, 403, errno.Forbidden.Code, errno.Forbidden.Msg, gin.H{})
+		default:
+			response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
+		}
+		return
+
+	}
+
+	response.Ok(c, gin.H{"room_id": RoomId})
 }

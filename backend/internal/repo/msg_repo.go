@@ -10,7 +10,6 @@ import (
 
 type MsgRepo interface {
 	ListByRoom(ctx context.Context, Id int64, limit int) ([]entity.Message, error)
-
 	Create(ctx context.Context, msg *entity.Message) error
 }
 
@@ -31,7 +30,7 @@ func (r *msgRepo) ListByRoom(ctx context.Context, Id int64, limit int) ([]entity
 		return nil, err
 	}
 	slices.Reverse(msgs)
-	return msgs, err
+	return msgs, nil
 
 }
 

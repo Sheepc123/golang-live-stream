@@ -51,8 +51,18 @@ var (
 		Msg:  "Room not found",
 	}
 
+	RoomListNotFound = ErrorCode{
+		Code: 40010,
+		Msg:  "Room List not found",
+	}
+
 	WSInvalidRoomID = ErrorCode{
 		Code: 40009,
 		Msg:  "Websocket Room_id is invalid",
+	}
+
+	Forbidden = ErrorCode{
+		Code: 40010,
+		Msg:  "Forbidden",
 	}
 )

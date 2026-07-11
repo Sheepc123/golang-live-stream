@@ -36,8 +36,17 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	msgHandler := handler.NewMsgHandler(msgService)
 
 	// websocket funciton
+	wsReistry := ws.NewActionRegistry()
 	wsManager := ws.NewManager()
-	wsHanlder := ws.NewWShandler(wsManager, cfg.JWT)
+
+	// register ChatAction
+	wsReistry.Register(ws.MessageTypeChat, ws.NewChatAction(wsManager, msgService))
+
+	// register LikeAction
+	LikeCounter := ws.NewLikeCounter()
+	wsReistry.Register(ws.MessageTypeLike, ws.NewLikeAction(wsManager, LikeCounter))
+
+	wsHanlder := ws.NewWShandler(wsManager, cfg.JWT, wsReistry, LikeCounter)
 
 	api := r.Group("/api/v1")
 	{
@@ -63,7 +72,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			{
 				rooms.GET("", roomHandler.ListRoom)
 
+				rooms.GET("/mine", roomHandler.ListMyRoom)
+
 				rooms.GET("/:id", roomHandler.GetRoomByID)
+				rooms.PUT("/:id", roomHandler.UpdateRoom)
+				rooms.POST("/:id", roomHandler.CreatRoom)
+				rooms.DELETE("/:id", roomHandler.DeleteRoom)
 
 				rooms.GET("/:id/messages", msgHandler.History)
 			}

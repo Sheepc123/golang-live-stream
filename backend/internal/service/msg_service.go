@@ -32,8 +32,20 @@ func (s MsgService) GetHistoryMessage(ctx context.Context, roomId int64, limit i
 		limit = defaultMessageLimit
 	}
 	if limit > maxMessageLimit {
-		limit = defaultMessageLimit
+		limit = maxMessageLimit
 	}
 
 	return s.msgRepo.ListByRoom(ctx, roomId, limit)
+}
+
+// Savemessage save the message to database using repo.Create funciton
+func (s MsgService) SaveMsg(ctx context.Context, RoomID int64, UserId int64, Username string, content string, msgType string) error {
+	msg := &entity.Message{
+		RoomID:   RoomID,
+		UserID:   UserId,
+		Username: Username,
+		Content:  content,
+		Type:     msgType,
+	}
+	return s.msgRepo.Create(ctx, msg)
 }

@@ -31,7 +31,7 @@ func UserProfileFromContext(c *gin.Context) (model.UserProfile, bool) {
 		return model.UserProfile{}, false
 	}
 
-	useid, ok := getContextValue[int64](c, "user_id")
+	userid, ok := getContextValue[int64](c, "user_id")
 
 	if !ok {
 		return model.UserProfile{}, false
@@ -39,7 +39,7 @@ func UserProfileFromContext(c *gin.Context) (model.UserProfile, bool) {
 
 	return model.UserProfile{
 		Username: username,
-		UserID:   useid,
+		UserID:   userid,
 	}, true
 }
 
