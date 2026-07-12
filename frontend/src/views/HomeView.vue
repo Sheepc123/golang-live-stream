@@ -148,6 +148,11 @@ function logout() {
   goLogin()
 }
 
+// 跳转到“我的直播间”管理页
+function goMyRooms() {
+  router.push('/my/rooms')
+}
+
 /**
  * 点击直播间卡片后，进入对应的直播间详情页。
  *
@@ -173,9 +178,15 @@ onMounted(() => {
         <p class="subtitle">选择一个直播间，进入正在发生的精彩现场。</p>
       </div>
 
-      <button class="logout-button" type="button" @click="logout">
-        退出登录
-      </button>
+      <div class="header-actions">
+        <button class="mine-button" type="button" @click="goMyRooms">
+            我的直播间
+          </button>
+
+        <button class="logout-button" type="button" @click="logout">
+          退出登录
+        </button>
+      </div>
     </header>
 
     <p v-if="errorMsg" class="error-message">
@@ -431,5 +442,18 @@ onMounted(() => {
   .logout-button {
     width: 100%;
   }
+  .header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mine-button {
+  padding: 10px 18px;
+  color: #6874e8;
+  border: 1px solid #6874e8;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #ffffff;
+}
 }
 </style>

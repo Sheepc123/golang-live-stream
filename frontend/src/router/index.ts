@@ -3,6 +3,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 import RoomDetailView from '@/views/RoomDetailView.vue'
+import MyRoomsView from '@/views/MyRoomsView.vue'
+
 
 const router = createRouter({
   // 使用浏览器正常的路由地址，例如 /login、/home
@@ -45,6 +47,16 @@ const router = createRouter({
       component: RoomDetailView,
       meta: {
         requiresAuth: true,
+      },
+    },
+
+    {
+      // 我的直播间管理页
+      path: '/my/rooms',
+      name: 'my-rooms',
+      component: MyRoomsView,
+      meta: {
+        requiresAuth: true, // 需要登录，未登录会被守卫重定向到 /login
       },
     },
 
