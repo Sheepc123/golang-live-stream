@@ -59,6 +59,20 @@ async function handleLogin() {
     
     localStorage.setItem('expires_in',String(result.data.expires_in))
 
+    // 「记住我」：勾选 = 持久登录；不勾选 = 关闭浏览器后失效。
+    // token 仍然放 localStorage（读取端统一从这里取），
+    // 这里只额外记录用户的选择，真正的判定放在路由守卫里。
+    localStorage.setItem('remember', form.remember ? '1' : '0')
+
+    // 不记住时，往 sessionStorage 放一个「会话存活」哨兵。
+    // sessionStorage 会在浏览器 / 标签页关闭后自动清空，
+    // 守卫下次发现哨兵消失，就知道浏览器关过，登录态作废。
+    if (form.remember) {
+      sessionStorage.removeItem('session_alive')
+    } else {
+      sessionStorage.setItem('session_alive', '1')
+    }
+
 
 
     router.push('/rooms')

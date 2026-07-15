@@ -2,6 +2,7 @@ package ws
 
 import (
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -23,7 +24,8 @@ type Client struct {
 	Conn     *websocket.Conn
 
 	// send is a buffer channel temporarily outgoing messages.
-	Send chan Message
+	Send      chan Message
+	closeOnce sync.Once
 }
 
 func NewClient(roomID int64, userId int64, username string, conn *websocket.Conn) *Client {
@@ -38,7 +40,7 @@ func NewClient(roomID int64, userId int64, username string, conn *websocket.Conn
 
 // ReadPump read the message from the frontend.
 // dispatch msg through ActionRegistry
-func (c *Client) ReadPump( registry *ActionRegistry) {
+func (c *Client) ReadPump(registry *ActionRegistry) {
 
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 
@@ -98,9 +100,12 @@ func (c *Client) WritePump() {
 	}
 }
 
+// 
 func (c *Client) Close() {
-	err := c.Conn.Close()
-	if err != nil {
-		log.Printf("fail to close websocket connection: %v", err)
-	}
+	c.closeOnce.Do(func() {
+		err := c.Conn.Close()
+		if err != nil {
+			log.Printf("fail to close websocket connection: %v", err)
+		}
+	})
 }

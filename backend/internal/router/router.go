@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
+func NewRouter(cfg *config.Config, db *gorm.DB) (*gin.Engine, *ws.Manager) {
 	r := gin.New()
 	r.Use(gin.Logger())
 
@@ -76,7 +76,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 
 				rooms.GET("/:id", roomHandler.GetRoomByID)
 				rooms.PUT("/:id", roomHandler.UpdateRoom)
-				rooms.POST("/:id", roomHandler.CreatRoom)
+				rooms.POST("", roomHandler.CreatRoom)
 				rooms.DELETE("/:id", roomHandler.DeleteRoom)
 
 				rooms.GET("/:id/messages", msgHandler.History)
@@ -88,5 +88,5 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	r.NoRoute(func(c *gin.Context) {
 		response.Fail(c, 404, errno.RouteNotFound.Code, errno.RouteNotFound.Msg, gin.H{})
 	})
-	return r
+	return r, wsManager
 }

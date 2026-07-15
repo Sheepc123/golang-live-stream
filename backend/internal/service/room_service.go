@@ -61,7 +61,7 @@ func (s *RoomService) UpdateRoom(ctx context.Context, ownerID int64, roomID int6
 		return nil, err
 	}
 
-	if ownerID != room.ID {
+	if ownerID != room.OwnerId {
 		return nil, ErrRoomForbidden
 	}
 
@@ -91,5 +91,5 @@ func (s *RoomService) DeleteRoom(ctx context.Context, ownerId int64, roomId int6
 		return ErrRoomForbidden
 	}
 
-	return s.DeleteRoom(ctx, ownerId, roomId)
+	return s.roomRepo.Delete(ctx, roomId)
 }

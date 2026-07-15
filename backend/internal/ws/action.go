@@ -4,6 +4,9 @@ import "log"
 
 // action dispatch different type msg
 type Action interface {
+
+	// require a Client paramater. provide session context(e.g., userId,roomId)
+	// trust Client context instead of msg context which from frontend.
 	Execute(client *Client, msg Message)
 }
 

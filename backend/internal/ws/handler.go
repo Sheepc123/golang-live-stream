@@ -73,8 +73,12 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 
 	client := NewClient(roomId, userId, username, conn)
 
+	h.manager.TrackConn()
+	defer h.manager.UnTrackConn()
+
 	defer func() {
 		h.manager.Unregister(client)
+		
 		client.Close()
 
 		leaveMSg := NewLeaveMessage(userId, roomId, username)
@@ -100,7 +104,6 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 
 	likeCountMsg := NewLikeMessageCount(roomId, currentLikeCount)
 	client.Send <- likeCountMsg
-
 
 	// Broadcast join message
 	joinMsg := NewJoinMessage(userId, roomId, username)

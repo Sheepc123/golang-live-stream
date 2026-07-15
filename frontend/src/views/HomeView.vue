@@ -425,6 +425,21 @@ onMounted(() => {
   color: #858a9f;
 }
 
+/* 头部按钮组：常规样式，任何屏宽都生效 */
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mine-button {
+  padding: 10px 18px;
+  color: #6874e8;
+  border: 1px solid #6874e8;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #ffffff;
+}
+
 @media (max-width: 640px) {
   .home-page {
     padding: 22px;
@@ -442,18 +457,5 @@ onMounted(() => {
   .logout-button {
     width: 100%;
   }
-  .header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.mine-button {
-  padding: 10px 18px;
-  color: #6874e8;
-  border: 1px solid #6874e8;
-  border-radius: 10px;
-  cursor: pointer;
-  background: #ffffff;
-}
 }
 </style>

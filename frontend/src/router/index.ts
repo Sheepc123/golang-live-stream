@@ -74,6 +74,8 @@ function clearAuthStorage() {
   localStorage.removeItem('expires_in')
   localStorage.removeItem('login_at')
   localStorage.removeItem('user')
+  localStorage.removeItem('remember')
+  sessionStorage.removeItem('session_alive')
 }
 
 function hasValidToken() {
@@ -83,6 +85,14 @@ function hasValidToken() {
 
 
   if (!token || !expiresIn || !loginAt) return false
+
+  // 「记住我」未勾选时，登录只在当前浏览器会话内有效。
+  // 依据 sessionStorage 的哨兵：浏览器关闭后 sessionStorage 被清空，
+  // 哨兵消失即视为会话结束，需要重新登录。
+  const remember = localStorage.getItem('remember') === '1'
+  if (!remember && !sessionStorage.getItem('session_alive')) {
+    return false
+  }
 
   const expiresAt = loginAt + expiresIn * 1000
 

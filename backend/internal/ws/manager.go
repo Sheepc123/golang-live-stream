@@ -26,13 +26,48 @@ type Manager struct {
 	// User B  leave the room
 	// User C  send the content
 	mu sync.RWMutex
+
+	pool *BroadcastPool
+
+	connWg sync.WaitGroup
 }
 
+const broadcastWokers = 8
+
 // NewManager create new websocket Manager
+// Start the broadcast pool
 func NewManager() *Manager {
-	return &Manager{
-		rooms: make(map[int64]map[*Client]bool),
+	m := &Manager{}
+	m.rooms = make(map[int64]map[*Client]bool)
+	m.pool = NewBroadcastPool(broadcastWokers, m.deliver)
+	m.pool.Start()
+	return m
+}
+
+// TrackConn /UnTrackConn are called by WSHandler when a Websocket Connection is established or closed.
+func (m *Manager) TrackConn()   { m.connWg.Add(1) }
+func (m *Manager) UnTrackConn() { m.connWg.Done() }
+
+
+// deliver broadcasts a message toall clients in the given room
+// Sends are non-blocking: if a client's send is full, the message is dropped 
+func (m *Manager) deliver(roomId int64, msg Message) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	clients, ok := m.rooms[roomId]
+	if !ok {
+		return
 	}
+
+	for client := range clients {
+		select {
+		case client.Send <- msg:
+		default:
+			log.Printf("Client %v is too slow, drop message in room %v", client.UserID, client.RoomID)
+		}
+	}
+
 }
 
 // Register add a new client to the corresponding live stream room.
@@ -71,23 +106,7 @@ func (m *Manager) Unregister(client *Client) {
 
 // BroadcastToRoom  broadcasts a message to all  clients in a specific live stream room
 func (m *Manager) BroadcastToRoom(roomId int64, msg Message) {
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	clients, ok := m.rooms[roomId]
-
-	if !ok {
-		return
-	}
-
-	for client := range clients {
-		select {
-		case client.Send <- msg:
-		default:
-			log.Printf("Client %v is too slow, drop message in room %v", client.UserID, client.RoomID)
-		}
-	}
+	m.pool.Submit(roomId, msg)
 }
 
 // OnlineCount return the number of online users in a 	specfic live stream room
@@ -102,4 +121,24 @@ func (m *Manager) OnlineCount(roomId int64) int {
 	}
 
 	return len(clients)
+}
+
+// CloseALL close all the client connections
+func (m *Manager) CloseAll() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, clients := range m.rooms {
+		for c := range clients {
+			c.Close()
+		}
+	}
+}
+
+func (m *Manager) ShutDown() {
+
+	m.CloseAll()
+	m.connWg.Wait()
+	m.pool.Stop()
+	
 }

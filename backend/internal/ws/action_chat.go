@@ -38,5 +38,5 @@ func (a *ChatAction) Execute(c *Client, m Message) {
 
 	a.manager.BroadcastToRoom(c.RoomID, outMsg)
 
-	saveMessageAsynv(a.MsgService, outMsg)
+	saveMessageAsyn(a.MsgService, outMsg)
 }
