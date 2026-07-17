@@ -265,6 +265,11 @@ function openRoom(roomID: number) {
   router.push(`/rooms/${roomID}`)
 }
 
+// 进入直播控制台（房主专用，开播/下播等操作都在这里）
+function openConsole(roomID: number) {
+  router.push(`/my/rooms/${roomID}/console`)
+}
+
 onMounted(() => {
   fetchMyRooms()
 })
@@ -311,6 +316,11 @@ onMounted(() => {
           <h3>{{ room.title }}</h3>
           <p class="anchor">{{ room.anchor_name || '未设置频道名' }}</p>
           <p class="description">{{ room.description || '暂无简介' }}</p>
+
+          <!-- 进入主播控制台：看画面/弹幕 + 开播下播 -->
+          <button class="console-button" type="button" @click="openConsole(room.id)">
+            进入直播间
+          </button>
 
           <div class="card-actions">
             <button class="edit-button" type="button" @click="openEdit(room)">
@@ -364,8 +374,8 @@ onMounted(() => {
           <label v-if="editingId !== null" class="field">
             <span>状态</span>
             <select v-model="form.status" :disabled="submitting">
-              <option value="offline">未开播 (offline)</option>
-              <option value="live">直播中 (live)</option>
+              <option value="offline">未开播</option>
+              <option value="live">直播中</option>
             </select>
           </label>
 
@@ -553,6 +563,20 @@ onMounted(() => {
 .delete-button {
   color: #d84646;
   background: #fff1f1;
+}
+
+/* 进入控制台：整行的主按钮，视觉上比编辑/删除更突出 */
+.console-button {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 9px 0;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #6676e8, #8c5de7);
 }
 
 /* ===== 弹窗 ===== */

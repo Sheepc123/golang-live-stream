@@ -17,6 +17,7 @@ import (
 type Config struct {
 	Server ServerConfig `yaml:"server"`
 	MySQL  MySQLConfig  `yaml:"mysql"`
+	Redis  RedisConfig  `yaml:"redis"`
 	JWT    JWTConfig    `yaml:"jwt"`
 }
 
@@ -38,6 +39,13 @@ type MySQLConfig struct {
 
 	//values: X  -> X hours
 	ConnMaxLifetime int `yaml:"conn_max_lifetime"`
+}
+
+type RedisConfig struct {
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
 }
 
 // JWTConfig represents the setting for signuatre and expiration time.
@@ -83,6 +91,11 @@ func (c *Config) OverrideFromEnv() {
 
 	// server
 	setStr(&c.Server.Port, "SERVER_PORT")
+
+	// Redis
+	setStr(&c.Redis.Host, "REDIS_HOST")
+	setStr(&c.Redis.Port, "REDIS_PORT")
+	setStr(&c.Redis.Password, "REDIS_PASSWORD")
 }
 
 func setStr(target *string, key string) {
@@ -100,4 +113,8 @@ func (m MySQLConfig) DSN() string {
 
 func (j JWTConfig) AccessTokenExpire() time.Duration {
 	return time.Duration(j.ExpireHours) * time.Hour
+}
+
+func (r RedisConfig) Addr() string {
+	return fmt.Sprintf("%s:%s", r.Host, r.Port)
 }

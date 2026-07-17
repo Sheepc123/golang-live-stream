@@ -1,8 +1,13 @@
 package ws
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"sync"
+	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // Manager handle the all websockets connection.
@@ -27,17 +32,18 @@ type Manager struct {
 	// User C  send the content
 	mu sync.RWMutex
 
-	pool *BroadcastPool
-
+	// Broadcast pool
+	pool   *BroadcastPool
 	connWg sync.WaitGroup
+	rdb    *redis.Client
 }
 
 const broadcastWokers = 8
 
 // NewManager create new websocket Manager
 // Start the broadcast pool
-func NewManager() *Manager {
-	m := &Manager{}
+func NewManager(rdb *redis.Client) *Manager {
+	m := &Manager{rdb: rdb}
 	m.rooms = make(map[int64]map[*Client]bool)
 	m.pool = NewBroadcastPool(broadcastWokers, m.deliver)
 	m.pool.Start()
@@ -48,9 +54,13 @@ func NewManager() *Manager {
 func (m *Manager) TrackConn()   { m.connWg.Add(1) }
 func (m *Manager) UnTrackConn() { m.connWg.Done() }
 
+// Generate room online counts key (e.g. room:1:online)
+func onlineKey(roomId int64) string {
+	return fmt.Sprintf("room:%d:online", roomId)
+}
 
 // deliver broadcasts a message toall clients in the given room
-// Sends are non-blocking: if a client's send is full, the message is dropped 
+// Sends are non-blocking: if a client's send is full, the message is dropped
 func (m *Manager) deliver(roomId int64, msg Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -73,24 +83,35 @@ func (m *Manager) deliver(roomId int64, msg Message) {
 // Register add a new client to the corresponding live stream room.
 func (m *Manager) Register(client *Client) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	_, ok := m.rooms[client.RoomID]
 
 	if !ok {
 		m.rooms[client.RoomID] = make(map[*Client]bool)
 	}
+
 	m.rooms[client.RoomID][client] = true
+
+	m.mu.Unlock()
+
+	//Release the lock before making the redis network call
+	// Then add this user to the rooms'online set.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := m.rdb.SAdd(ctx, onlineKey(client.RoomID), client.UserID).Err(); err != nil {
+		log.Printf("redos sadd online fail (roomId = %d, userId = %d) : %v", client.RoomID, client.UserID, err)
+	}
 }
 
 // Unregister remove a client to the corresponding live stream room
 func (m *Manager) Unregister(client *Client) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	clients, ok := m.rooms[client.RoomID]
 
 	if !ok {
+		m.mu.Unlock()
 		return
 	}
 
@@ -102,6 +123,15 @@ func (m *Manager) Unregister(client *Client) {
 	if len(clients) == 0 {
 		delete(m.rooms, client.RoomID)
 	}
+
+	m.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := m.rdb.SRem(ctx, onlineKey(client.RoomID), client.UserID).Err(); err != nil {
+		log.Printf("redis set remove online fail (roomId = %d, userId = %d) : %v", client.RoomID, client.UserID, err)
+	}
 }
 
 // BroadcastToRoom  broadcasts a message to all  clients in a specific live stream room
@@ -109,18 +139,20 @@ func (m *Manager) BroadcastToRoom(roomId int64, msg Message) {
 	m.pool.Submit(roomId, msg)
 }
 
-// OnlineCount return the number of online users in a 	specfic live stream room
+// OnlineCount return the number of online users in a specfic live stream room
 func (m *Manager) OnlineCount(roomId int64) int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 
-	clients, ok := m.rooms[roomId]
+	count, err := m.rdb.SCard(ctx, onlineKey(roomId)).Result()
 
-	if !ok {
+	if err != nil {
+		log.Printf("redis scard online fail (roomId = %d) ; %v", roomId, err)
 		return 0
 	}
 
-	return len(clients)
+	return int(count)
+
 }
 
 // CloseALL close all the client connections
@@ -140,5 +172,5 @@ func (m *Manager) ShutDown() {
 	m.CloseAll()
 	m.connWg.Wait()
 	m.pool.Stop()
-	
+
 }

@@ -4,6 +4,7 @@ import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 import RoomDetailView from '@/views/RoomDetailView.vue'
 import MyRoomsView from '@/views/MyRoomsView.vue'
+import RoomConsoleView from '@/views/RoomConsoleView.vue'
 
 
 const router = createRouter({
@@ -57,6 +58,17 @@ const router = createRouter({
       component: MyRoomsView,
       meta: {
         requiresAuth: true, // 需要登录，未登录会被守卫重定向到 /login
+      },
+    },
+
+    {
+      // 主播直播控制台：只有房主本人能操作，进来可看画面/弹幕 + 开播下播等控制
+      // 归属校验放在页面内部（比对当前 user_id 与 room.owner_id），非房主会被挡回
+      path: '/my/rooms/:room_id/console',
+      name: 'room-console',
+      component: RoomConsoleView,
+      meta: {
+        requiresAuth: true,
       },
     },
 

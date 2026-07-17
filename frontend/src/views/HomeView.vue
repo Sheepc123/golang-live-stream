@@ -216,8 +216,11 @@ onMounted(() => {
           <div class="cover-wrap">
             <img :src="room.cover_url" :alt="room.title" />
 
-            <span class="live-badge">
-              {{ room.status }}
+            <span
+              class="live-badge"
+              :class="room.status === 'live' ? 'is-live' : 'is-offline'"
+            >
+              {{ room.status === 'live' ? '直播中' : '未开播' }}
             </span>
           </div>
 
@@ -383,7 +386,17 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 700;
   border-radius: 999px;
+  /* 背景色交给下面两个状态类决定 */
+}
+
+/* 开播：红色 */
+.live-badge.is-live {
   background: #ef4444;
+}
+
+/* 未开播：灰色 */
+.live-badge.is-offline {
+  background: #8a90a3;
 }
 
 .room-body {

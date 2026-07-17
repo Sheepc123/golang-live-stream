@@ -10,10 +10,11 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/service"
 	"github.com/Sheepc123/golang-live-stream/internal/ws"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
-func NewRouter(cfg *config.Config, db *gorm.DB) (*gin.Engine, *ws.Manager) {
+func NewRouter(cfg *config.Config, db *gorm.DB, rdb *redis.Client) (*gin.Engine, *ws.Manager) {
 	r := gin.New()
 	r.Use(gin.Logger())
 
@@ -27,8 +28,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB) (*gin.Engine, *ws.Manager) {
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler()
 
+	// RoomService need the LikeCounter interface
+	LikeCounter := ws.NewLikeCounter(rdb)
+
 	// roomService function
-	roomService := service.NewRoomService(roomRepo)
+	roomService := service.NewRoomService(roomRepo, LikeCounter)
 	roomHandler := handler.NewRoomHandler(roomService)
 
 	// Message function
@@ -37,15 +41,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB) (*gin.Engine, *ws.Manager) {
 
 	// websocket funciton
 	wsReistry := ws.NewActionRegistry()
-	wsManager := ws.NewManager()
+	wsManager := ws.NewManager(rdb)
 
 	// register ChatAction
 	wsReistry.Register(ws.MessageTypeChat, ws.NewChatAction(wsManager, msgService))
 
 	// register LikeAction
-	LikeCounter := ws.NewLikeCounter()
 	wsReistry.Register(ws.MessageTypeLike, ws.NewLikeAction(wsManager, LikeCounter))
-
 	wsHanlder := ws.NewWShandler(wsManager, cfg.JWT, wsReistry, LikeCounter)
 
 	api := r.Group("/api/v1")

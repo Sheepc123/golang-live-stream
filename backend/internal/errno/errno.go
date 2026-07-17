@@ -62,7 +62,7 @@ var (
 	}
 
 	Forbidden = ErrorCode{
-		Code: 40010,
+		Code: 40011,
 		Msg:  "Forbidden",
 	}
 )
