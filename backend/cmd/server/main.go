@@ -45,18 +45,24 @@ func main() {
 	// }
 	// log.Printf("successfully seed database")
 
-
-	// Redis Load 
-
-	rdb,err := infra.NewRedis(cfg.Redis)
+	// Redis Load
+	rdb, err := infra.NewRedis(cfg.Redis)
 	if err != nil {
-		log.Fatalf("Failed to connect redis : %v",err)
+		log.Fatalf("Failed to connect redis : %v", err)
 	}
 
 	log.Printf("redis connected")
 
+	// New Kafka
+	producer, err := infra.NewKafkaProducer(cfg.Kafka)
+
+	if err != nil {
+		log.Fatalf("Failed to create Kafka Proudcer : %v ", err)
+	}
+	log.Printf("Kafka producer ready")
+
 	// NewRouter
-	r, wsManager := router.NewRouter(cfg, db,rdb)
+	r, wsManager := router.NewRouter(cfg, db, rdb, producer)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,
@@ -84,6 +90,10 @@ func main() {
 	}
 
 	wsManager.ShutDown()
+
+	if err := producer.Close(); err != nil {
+		log.Printf("kafka producer clsoe error %v", err)
+	}
 
 	log.Printf("server exited cleanly")
 }

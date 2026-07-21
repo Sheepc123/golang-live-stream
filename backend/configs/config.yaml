@@ -22,3 +22,9 @@ redis:
   port: "6379"
   password: "" # 本地无密码
   db: 0
+
+kafka:
+  brokers:
+  - "localhost:9092"
+  topic: "danmu"
+  group_id: "danmu-db-writer"

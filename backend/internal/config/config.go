@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -19,6 +20,7 @@ type Config struct {
 	MySQL  MySQLConfig  `yaml:"mysql"`
 	Redis  RedisConfig  `yaml:"redis"`
 	JWT    JWTConfig    `yaml:"jwt"`
+	Kafka  KafKaConfig  `yaml:"kafka"`
 }
 
 // Server Config represents the setting for HTTP server.
@@ -52,6 +54,12 @@ type RedisConfig struct {
 type JWTConfig struct {
 	Secret      string `yaml:"secret"`
 	ExpireHours int    `yaml:"expires_hours"`
+}
+
+type KafKaConfig struct {
+	Brokers []string `yaml:"brokers"`
+	Topic   string   `yaml:"topic"`
+	GroupId string   `yaml:"group_id"`
 }
 
 // Load Read setting through yaml and env
@@ -96,11 +104,31 @@ func (c *Config) OverrideFromEnv() {
 	setStr(&c.Redis.Host, "REDIS_HOST")
 	setStr(&c.Redis.Port, "REDIS_PORT")
 	setStr(&c.Redis.Password, "REDIS_PASSWORD")
+
+	// Kafka
+	setStrSlice(&c.Kafka.Brokers, "KAFKA_BROKERS")
+	setStr(&c.Kafka.Topic, "KAFKA_TOPIC")
+	setStr(&c.Kafka.GroupId, "KAFKA_GROUP_ID")
+
 }
 
 func setStr(target *string, key string) {
 	if v := os.Getenv(key); v != "" {
 		*target = v
+	}
+}
+
+// setStrSlice overrides a []string from a comma-separated env value.
+// e.g. KAFKA_BROKERS = "host1:9092.host2:9092"
+func setStrSlice(target *[]string, key string) {
+	if v := os.Getenv(key); v != "" {
+		parts := strings.Split(v, ",")
+
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+
+		}
+		*target = parts
 	}
 }
 

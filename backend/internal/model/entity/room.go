@@ -19,6 +19,7 @@ type Room struct {
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }
 
+// Return the table name
 func (Room) TableName() string {
 	return "rooms"
 }

@@ -84,7 +84,7 @@ func (c *Client) WritePump() {
 			}
 
 			if err := c.Conn.WriteJSON(msg); err != nil {
-				log.Printf("write pump stopped (write json fall) : %v", err)
+				log.Printf("write pump stopped (fall) : %v", err)
 				return
 			}
 		case <-ticker.C:
@@ -100,7 +100,6 @@ func (c *Client) WritePump() {
 	}
 }
 
-// 
 func (c *Client) Close() {
 	c.closeOnce.Do(func() {
 		err := c.Conn.Close()

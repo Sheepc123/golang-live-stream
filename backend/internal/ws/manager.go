@@ -2,11 +2,13 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
+	"github.com/Sheepc123/golang-live-stream/internal/infra"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -36,17 +38,21 @@ type Manager struct {
 	pool   *BroadcastPool
 	connWg sync.WaitGroup
 	rdb    *redis.Client
+	pubsub *redis.PubSub
+
+	producer *infra.KafkaProducer
 }
 
 const broadcastWokers = 8
 
 // NewManager create new websocket Manager
 // Start the broadcast pool
-func NewManager(rdb *redis.Client) *Manager {
-	m := &Manager{rdb: rdb}
+func NewManager(rdb *redis.Client, pd *infra.KafkaProducer) *Manager {
+	m := &Manager{rdb: rdb, producer: pd}
 	m.rooms = make(map[int64]map[*Client]bool)
 	m.pool = NewBroadcastPool(broadcastWokers, m.deliver)
 	m.pool.Start()
+	m.startSubsrcibe()
 	return m
 }
 
@@ -100,7 +106,7 @@ func (m *Manager) Register(client *Client) {
 	defer cancel()
 
 	if err := m.rdb.SAdd(ctx, onlineKey(client.RoomID), client.UserID).Err(); err != nil {
-		log.Printf("redos sadd online fail (roomId = %d, userId = %d) : %v", client.RoomID, client.UserID, err)
+		log.Printf("redis sadd online fail (roomId = %d, userId = %d) : %v", client.RoomID, client.UserID, err)
 	}
 }
 
@@ -134,9 +140,9 @@ func (m *Manager) Unregister(client *Client) {
 	}
 }
 
-// BroadcastToRoom  broadcasts a message to all  clients in a specific live stream room
+// BroadcastToRoom use redis Publish
 func (m *Manager) BroadcastToRoom(roomId int64, msg Message) {
-	m.pool.Submit(roomId, msg)
+	m.publish(roomId, msg)
 }
 
 // OnlineCount return the number of online users in a specfic live stream room
@@ -171,6 +177,21 @@ func (m *Manager) ShutDown() {
 
 	m.CloseAll()
 	m.connWg.Wait()
+	if m.pubsub != nil {
+		m.pubsub.Close()
+	}
 	m.pool.Stop()
+
+}
+
+// Asynchronously persist message through Kafka.
+func (m *Manager) PersistMsg(msg Message) {
+	data, err := json.Marshal(msg)
+
+	if err != nil {
+		log.Printf("persist marshal fail (room = %d): %v", msg.RoomID, msg)
+		return
+	}
+	m.producer.Publish(msg.RoomID, data)
 
 }

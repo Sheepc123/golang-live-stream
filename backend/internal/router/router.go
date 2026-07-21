@@ -4,6 +4,7 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/handler"
+	"github.com/Sheepc123/golang-live-stream/internal/infra"
 	"github.com/Sheepc123/golang-live-stream/internal/middleware"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
@@ -14,7 +15,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func NewRouter(cfg *config.Config, db *gorm.DB, rdb *redis.Client) (*gin.Engine, *ws.Manager) {
+func NewRouter(
+	cfg *config.Config,
+	db *gorm.DB,
+	rdb *redis.Client,
+	producer *infra.KafkaProducer,
+) (*gin.Engine, *ws.Manager) {
+
 	r := gin.New()
 	r.Use(gin.Logger())
 
@@ -41,10 +48,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, rdb *redis.Client) (*gin.Engine,
 
 	// websocket funciton
 	wsReistry := ws.NewActionRegistry()
-	wsManager := ws.NewManager(rdb)
+	wsManager := ws.NewManager(rdb, producer)
+
+	//
 
 	// register ChatAction
-	wsReistry.Register(ws.MessageTypeChat, ws.NewChatAction(wsManager, msgService))
+	wsReistry.Register(ws.MessageTypeChat, ws.NewChatAction(wsManager))
 
 	// register LikeAction
 	wsReistry.Register(ws.MessageTypeLike, ws.NewLikeAction(wsManager, LikeCounter))

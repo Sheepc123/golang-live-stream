@@ -3,22 +3,16 @@ package ws
 import (
 	"strings"
 	"unicode/utf8"
-
-	"github.com/Sheepc123/golang-live-stream/internal/service"
 )
 
 const maxChatContentLength = 200
 
 type ChatAction struct {
-	manager    *Manager
-	MsgService *service.MsgService
+	manager *Manager
 }
 
-func NewChatAction(m *Manager, s *service.MsgService) *ChatAction {
-	return &ChatAction{
-		manager:    m,
-		MsgService: s,
-	}
+func NewChatAction(m *Manager) *ChatAction {
+	return &ChatAction{manager: m}
 }
 
 func (a *ChatAction) Execute(c *Client, m Message) {
@@ -38,5 +32,5 @@ func (a *ChatAction) Execute(c *Client, m Message) {
 
 	a.manager.BroadcastToRoom(c.RoomID, outMsg)
 
-	saveMessageAsyn(a.MsgService, outMsg)
+	a.manager.PersistMsg(outMsg)
 }
