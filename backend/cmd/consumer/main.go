@@ -16,12 +16,13 @@ import (
 
 // ChatEvent Read from Kafka struct
 type ChatEvent struct {
-	Type      string `json:"type"`
-	RoomID    int64  `json:"room_id"`
-	UserID    int64  `json:"user_id"`
-	Username  string `json:"username"`
-	Content   string `json:"content"`
-	Timestamp int64  `json:"timestamp"`
+	Type          string `json:"type"`
+	RoomID        int64  `json:"room_id"`
+	UserID        int64  `json:"user_id"`
+	Username      string `json:"username"`
+	Content       string `json:"content"`
+	Timestamp     int64  `json:"timestamp"`
+	LiveSessionID int64  `json:"live_session_id"`
 }
 
 // consumerHandler implements the interface of sarma.ConsumerGroupHandler
@@ -43,11 +44,12 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 		}
 
 		entityMsg := &entity.Message{
-			RoomID:   ev.RoomID,
-			UserID:   ev.UserID,
-			Username: ev.Username,
-			Content:  ev.Content,
-			Type:     ev.Type,
+			RoomID:        ev.RoomID,
+			UserID:        ev.UserID,
+			Username:      ev.Username,
+			Content:       ev.Content,
+			Type:          ev.Type,
+			LiveSessionID: ev.LiveSessionID,
 		}
 
 		if err := h.msgRepo.Create(session.Context(), entityMsg); err != nil {

@@ -9,6 +9,7 @@ import (
 )
 
 var ErrRoomNotFound = errors.New("room not found")
+var ErrRoomForbidden = errors.New("permission denied : not the room owner.")
 
 type RoomRepo interface {
 	RoomList(ctx context.Context) ([]entity.Room, error)
@@ -18,6 +19,7 @@ type RoomRepo interface {
 	Create(ctx context.Context, room *entity.Room) error
 	Update(ctx context.Context, room *entity.Room) error
 	Delete(ctx context.Context, id int64) error
+	
 }
 
 type roomRepo struct {

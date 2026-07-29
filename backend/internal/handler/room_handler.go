@@ -72,7 +72,7 @@ func (h *RoomHandler) GetRoomByID(c *gin.Context) {
 // GETMineRoom handler GET /api/v1/rooms/mine
 func (h *RoomHandler) ListMyRoom(c *gin.Context) {
 
-	ownerId, exits := getContextValue[int64](c, "user_id")
+	ownerId, exits := GetContextValue[int64](c, "user_id")
 
 	if !exits {
 		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
@@ -99,7 +99,7 @@ func (h *RoomHandler) ListMyRoom(c *gin.Context) {
 
 // createRoom handle POST /api/v1/rooms
 func (h *RoomHandler) CreatRoom(c *gin.Context) {
-	ownerId, ok := getContextValue[int64](c, "user_id")
+	ownerId, ok := GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
@@ -125,7 +125,7 @@ func (h *RoomHandler) CreatRoom(c *gin.Context) {
 
 // UpdateRoom handle PUT /api/v1/rooms/id
 func (h *RoomHandler) UpdateRoom(c *gin.Context) {
-	ownerId, ok := getContextValue[int64](c, "user_id")
+	ownerId, ok := GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
@@ -156,7 +156,7 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 		case errors.Is(err, repo.ErrRoomNotFound):
 
 			response.Fail(c, 404, errno.RoomNotFound.Code, errno.RoomNotFound.Msg, gin.H{})
-		case errors.Is(err, service.ErrRoomForbidden):
+		case errors.Is(err, repo.ErrRoomForbidden):
 			response.Fail(c, 403, errno.Forbidden.Code, errno.Forbidden.Msg, gin.H{})
 		default:
 			response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
@@ -170,7 +170,7 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 
 // DeleteRoom handle DELETE /api/v1/rooms/:id
 func (h *RoomHandler) DeleteRoom(c *gin.Context) {
-	ownerId, ok := getContextValue[int64](c, "user_id")
+	ownerId, ok := GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
@@ -189,7 +189,7 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 		switch {
 		case errors.Is(err, repo.ErrRoomNotFound):
 			response.Fail(c, 404, errno.RoomNotFound.Code, errno.RoomNotFound.Msg, gin.H{})
-		case errors.Is(err, service.ErrRoomForbidden):
+		case errors.Is(err, repo.ErrRoomForbidden):
 			response.Fail(c, 403, errno.Forbidden.Code, errno.Forbidden.Msg, gin.H{})
 		default:
 			response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})

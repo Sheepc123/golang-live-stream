@@ -25,12 +25,13 @@ const (
 
 // Message represents the message in websocket.
 type Message struct {
-	Type      string `json:"type"`
-	RoomID    int64  `json:"room_id"`
-	UserID    int64  `json:"user_id"`
-	Username  string `json:"username"`
-	Content   string `json:"content"`
-	Timestamp int64  `json:"timestamp"`
+	Type          string `json:"type"`
+	RoomID        int64  `json:"room_id"`
+	UserID        int64  `json:"user_id"`
+	Username      string `json:"username"`
+	Content       string `json:"content"`
+	Timestamp     int64  `json:"timestamp"`
+	LiveSessionID int64  `json:"live_session_id"`
 }
 
 // newMessage is the local-level constructor reponsible for populating
@@ -44,11 +45,12 @@ func newMessage(roomId int64, Type string) Message {
 }
 
 // NewChatMessage creates a new Chat message
-func NewChatMessage(userid, roomid int64, username, Content string) Message {
+func NewChatMessage(userId, roomid int64, username, Content string, sId int64) Message {
 	msg := newMessage(roomid, MessageTypeChat)
-	msg.UserID = userid
+	msg.UserID = userId
 	msg.Content = Content
 	msg.Username = username
+	msg.LiveSessionID = sId
 	return msg
 }
 
@@ -88,7 +90,7 @@ func NewHeartBeatMessage(roomID int64) Message {
 }
 
 // NewOnlineCountMessage create a online count message
-func NewOnlineCountMessage(roomID int64, count int) Message {
+func NewOnlineCountMessage(roomID int64, count int64) Message {
 	msg := newMessage(roomID, MessageTypeOnlineCount)
 	msg.Content = fmt.Sprintf("%d", count)
 	return msg

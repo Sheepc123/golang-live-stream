@@ -45,6 +45,8 @@ const submitting = ref(false)
 const formError = ref('')
 
 // 表单字段，新建/编辑共用这一份。
+// 注意：这里不含 status —— 直播状态由控制台的「开播/下播」按钮控制，
+// 编辑弹窗只负责房间资料（标题、封面等）。
 const form = reactive({
   title: '',
   anchor_name: '',
@@ -52,7 +54,6 @@ const form = reactive({
   cover_url: '',
   stream_url: '',
   description: '',
-  status: 'offline', // 仅编辑时用；新建时后端固定 offline
 })
 
 // ===== 鉴权工具（与 HomeView / RoomDetailView 保持一致）=====
@@ -124,7 +125,6 @@ function openCreate() {
   form.cover_url = ''
   form.stream_url = ''
   form.description = ''
-  form.status = 'offline'
   formError.value = ''
   showForm.value = true
 }
@@ -138,7 +138,6 @@ function openEdit(room: Room) {
   form.cover_url = room.cover_url
   form.stream_url = room.stream_url
   form.description = room.description
-  form.status = room.status
   formError.value = ''
   showForm.value = true
 }
@@ -169,7 +168,8 @@ async function submitForm() {
   const url = isEdit ? `/api/v1/rooms/${editingId.value}` : '/api/v1/rooms'
   const method = isEdit ? 'PUT' : 'POST'
 
-  // 请求体：新建不带 status（后端固定 offline），只有编辑才提交 status
+  // 请求体只含房间资料，不带 status。
+  // 直播状态由控制台的开播/下播接口管理，编辑房间不再改动直播状态。
   const body: Record<string, unknown> = {
     title: form.title,
     anchor_name: form.anchor_name,
@@ -177,9 +177,6 @@ async function submitForm() {
     cover_url: form.cover_url,
     stream_url: form.stream_url,
     description: form.description,
-  }
-  if (isEdit) {
-    body.status = form.status
   }
 
   try {
@@ -368,15 +365,6 @@ onMounted(() => {
           <label class="field">
             <span>简介</span>
             <textarea v-model="form.description" rows="3" placeholder="直播间简介" :disabled="submitting"></textarea>
-          </label>
-
-          <!-- 状态只在“编辑”时出现：新建时后端固定 offline -->
-          <label v-if="editingId !== null" class="field">
-            <span>状态</span>
-            <select v-model="form.status" :disabled="submitting">
-              <option value="offline">未开播</option>
-              <option value="live">直播中</option>
-            </select>
           </label>
 
           <p v-if="formError" class="error-message">{{ formError }}</p>

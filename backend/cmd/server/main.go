@@ -32,18 +32,18 @@ func main() {
 
 	log.Printf("mysql connected")
 
-	// // AutoMigrate databse
-	// if err := infra.AutoMigrate(db); err != nil {
-	// 	log.Fatalf("failed to migrate %v", err)
-	// }
+	// AutoMigrate databse
+	if err := infra.AutoMigrate(db); err != nil {
+		log.Fatalf("failed to migrate %v", err)
+	}
 
-	// log.Printf("successfully migrate database")
+	log.Printf("successfully migrate database")
 
-	// // Seed generate inital database
-	// if err := infra.Seed(db); err != nil {
-	// 	log.Fatalf("failed to seed database : %v", err)
-	// }
-	// log.Printf("successfully seed database")
+	// Seed generate inital database
+	if err := infra.Seed(db); err != nil {
+		log.Fatalf("failed to seed database : %v", err)
+	}
+	log.Printf("successfully seed database")
 
 	// Redis Load
 	rdb, err := infra.NewRedis(cfg.Redis)

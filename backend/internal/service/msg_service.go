@@ -46,6 +46,7 @@ func (s MsgService) SaveMsg(ctx context.Context, RoomID int64, UserId int64, Use
 		Username: Username,
 		Content:  content,
 		Type:     msgType,
+
 	}
 	return s.msgRepo.Create(ctx, msg)
 }

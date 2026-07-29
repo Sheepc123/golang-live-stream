@@ -25,13 +25,13 @@ func (h *UserHandler) Me(c *gin.Context) {
 }
 
 func UserProfileFromContext(c *gin.Context) (model.UserProfile, bool) {
-	username, ok := getContextValue[string](c, "user_name")
+	username, ok := GetContextValue[string](c, "user_name")
 
 	if !ok {
 		return model.UserProfile{}, false
 	}
 
-	userid, ok := getContextValue[int64](c, "user_id")
+	userid, ok := GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		return model.UserProfile{}, false
@@ -43,7 +43,9 @@ func UserProfileFromContext(c *gin.Context) (model.UserProfile, bool) {
 	}, true
 }
 
-func getContextValue[T any](c *gin.Context, key string) (T, bool) {
+// get the T from context
+// from JWT Token we can get the user_id and User_name
+func GetContextValue[T any](c *gin.Context, key string) (T, bool) {
 	value, ok := c.Get(key)
 
 	if !ok {

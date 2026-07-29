@@ -286,8 +286,9 @@ function closeWebSocket() {
 }
 
 // ===== 主播控制区：开播 / 下播 =====
-// 复用后端已有的 PUT /rooms/:id：把房间现有信息全带上，只改 status。
-// 开播（offline→live）时，后端 UpdateRoom 会自动重置该房间的点赞数。
+// 调用后端专门的开播/下播接口（不再走 PUT /rooms/:id 改 status）。
+//   开播: POST /api/v1/rooms/:id/live/start → 建场次 + 重置点赞 + status=live
+//   下播: POST /api/v1/rooms/:id/live/stop  → 快照点赞入库 + 结算场次 + status=offline
 async function toggleLiveStatus() {
   if (!room.value) return
 
@@ -297,29 +298,18 @@ async function toggleLiveStatus() {
     return
   }
 
-  // 目标状态：当前 live 就切到 offline，反之切到 live。
-  const nextStatus = isLive.value ? 'offline' : 'live'
+  // 当前在播 → 调 stop；当前未播 → 调 start。
+  const action = isLive.value ? 'stop' : 'start'
 
   statusSubmitting.value = true
   consoleError.value = ''
 
   try {
-    const res = await fetch(`/api/v1/rooms/${room.value.id}`, {
-      method: 'PUT',
+    const res = await fetch(`/api/v1/rooms/${room.value.id}/live/${action}`, {
+      method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         Authorization: authorization,
       },
-      // PUT 是整体更新，必须把其它字段一并带上，否则会被清空。
-      body: JSON.stringify({
-        title: room.value.title,
-        anchor_name: room.value.anchor_name,
-        category: room.value.category,
-        cover_url: room.value.cover_url,
-        stream_url: room.value.stream_url,
-        description: room.value.description,
-        status: nextStatus,
-      }),
     })
 
     if (res.status === 401) {
@@ -331,14 +321,15 @@ async function toggleLiveStatus() {
       return
     }
 
-    const result = (await res.json()) as ApiResponse<Room>
+    const result = (await res.json()) as ApiResponse<unknown>
     if (result.code !== 0) {
       consoleError.value = result.msg || '切换直播状态失败'
       return
     }
 
-    // 用后端返回的最新房间数据刷新本地状态，按钮和徽章会跟着变。
-    room.value = result.data
+    // start 返回 { session_id }、stop 返回 { room_id }，都不是完整 Room，
+    // 所以重新拉一次房间详情拿最新 status，isLive/按钮/徽章会跟着更新。
+    await fetchRoomDetail()
   } catch {
     consoleError.value = '无法连接服务器'
   } finally {

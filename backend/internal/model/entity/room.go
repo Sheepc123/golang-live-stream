@@ -2,6 +2,11 @@ package entity
 
 import "time"
 
+// const (
+// 	RoomStatusLive = "live"
+// 	RoomStatusLive = "offline"
+// )
+
 type Room struct {
 	ID          int64  `gorm:"primaryKey;autoIncrement"`
 	OwnerId     int64  `gorm:"index;not null"`

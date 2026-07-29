@@ -5,6 +5,7 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/handler"
 	"github.com/Sheepc123/golang-live-stream/internal/infra"
+	"github.com/Sheepc123/golang-live-stream/internal/live"
 	"github.com/Sheepc123/golang-live-stream/internal/middleware"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
@@ -23,12 +24,13 @@ func NewRouter(
 ) (*gin.Engine, *ws.Manager) {
 
 	r := gin.New()
-	r.Use(gin.Logger())
+	r.Use(gin.Logger(), gin.Recovery())
 
 	// repo initalize
 	userRepo := repo.NewUserRepo(db)
 	roomRepo := repo.NewRoomRepo(db)
 	msgRepo := repo.NewMesRep(db)
+	lsRepo := repo.NewLiveSessionRepo(db)
 
 	// auth function
 	authService := service.NewAuthService(cfg.JWT, userRepo)
@@ -36,10 +38,10 @@ func NewRouter(
 	userHandler := handler.NewUserHandler()
 
 	// RoomService need the LikeCounter interface
-	LikeCounter := ws.NewLikeCounter(rdb)
+	LikeCounter := live.NewLikeCounter(rdb)
 
 	// roomService function
-	roomService := service.NewRoomService(roomRepo, LikeCounter)
+	roomService := service.NewRoomService(roomRepo)
 	roomHandler := handler.NewRoomHandler(roomService)
 
 	// Message function
@@ -50,14 +52,20 @@ func NewRouter(
 	wsReistry := ws.NewActionRegistry()
 	wsManager := ws.NewManager(rdb, producer)
 
-	//
+	lo := live.NewOnlineCounter(rdb)
 
+	// live function
+	SMgr := live.NewSessionManager(lsRepo, LikeCounter, rdb, lo)
+	ls := live.NewLiveService(SMgr, roomRepo, wsManager)
+	liveHandler := live.NewLiveHandler(ls)
+
+	// register actions
 	// register ChatAction
-	wsReistry.Register(ws.MessageTypeChat, ws.NewChatAction(wsManager))
+	wsReistry.Register(ws.MessageTypeChat, ws.NewChatAction(wsManager, SMgr))
 
 	// register LikeAction
-	wsReistry.Register(ws.MessageTypeLike, ws.NewLikeAction(wsManager, LikeCounter))
-	wsHanlder := ws.NewWShandler(wsManager, cfg.JWT, wsReistry, LikeCounter)
+	wsReistry.Register(ws.MessageTypeLike, ws.NewLikeAction(wsManager, LikeCounter, SMgr))
+	wsHanlder := ws.NewWShandler(wsManager, cfg.JWT, wsReistry, SMgr)
 
 	api := r.Group("/api/v1")
 	{
@@ -91,6 +99,9 @@ func NewRouter(
 				rooms.DELETE("/:id", roomHandler.DeleteRoom)
 
 				rooms.GET("/:id/messages", msgHandler.History)
+
+				rooms.POST("/:id/live/start", liveHandler.LiveStart)
+				rooms.POST("/:id/live/stop", liveHandler.LiveStop)
 			}
 
 		}

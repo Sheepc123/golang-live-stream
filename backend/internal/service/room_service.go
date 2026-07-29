@@ -3,32 +3,21 @@ package service
 import (
 	"context"
 	"errors"
-	"log"
 
 	"github.com/Sheepc123/golang-live-stream/internal/model"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 )
 
-var ErrRoomForbidden = errors.New("Error permission denied.")
-
-type LikeResetter interface {
-	ResetLike(ctx context.Context, roomId int64) error
-}
-
 // 1.Room service
 type RoomService struct {
-	roomRepo    repo.RoomRepo
-	likeRestter LikeResetter
+	roomRepo repo.RoomRepo
 }
 
 var ErrRoomNotFound = errors.New("room not found")
 
-func NewRoomService(r repo.RoomRepo, lr LikeResetter) *RoomService {
-	return &RoomService{
-		roomRepo:    r,
-		likeRestter: lr,
-	}
+func NewRoomService(r repo.RoomRepo) *RoomService {
+	return &RoomService{roomRepo: r}
 }
 
 func (s *RoomService) RoomList(ctx context.Context) ([]entity.Room, error) {
@@ -71,9 +60,8 @@ func (s *RoomService) UpdateRoom(ctx context.Context, ownerID int64, roomID int6
 	}
 
 	if ownerID != room.OwnerId {
-		return nil, ErrRoomForbidden
+		return nil, repo.ErrRoomForbidden
 	}
-	oldStatus := room.Status
 
 	room.Title = req.Title
 	room.ChannelName = req.ChannelName
@@ -81,18 +69,10 @@ func (s *RoomService) UpdateRoom(ctx context.Context, ownerID int64, roomID int6
 	room.CoverURL = req.CoverURL
 	room.StreamURL = req.StreamURL
 	room.Description = req.Description
-	room.Status = req.Status
 
 	// 4. 落库
 	if err := s.roomRepo.Update(ctx, room); err != nil {
 		return nil, err
-	}
-
-	//  Check wehter the room status offline -> live
-	if oldStatus == "offline" && req.Status == "live" {
-		if err := s.likeRestter.ResetLike(ctx, roomID); err != nil {
-			log.Printf("reset like fail (room = %d ): %v", roomID, err)
-		}
 	}
 
 	return room, nil
@@ -106,7 +86,7 @@ func (s *RoomService) DeleteRoom(ctx context.Context, ownerId int64, roomId int6
 	}
 
 	if room.OwnerId != ownerId {
-		return ErrRoomForbidden
+		return repo.ErrRoomForbidden
 	}
 
 	return s.roomRepo.Delete(ctx, roomId)

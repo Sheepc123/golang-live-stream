@@ -18,10 +18,10 @@ const (
 
 // Client represents a user connected to a live room through websocket.
 type Client struct {
-	RoomID   int64
-	UserID   int64
-	Username string
-	Conn     *websocket.Conn
+	RoomID        int64
+	UserID        int64
+	Username      string
+	Conn          *websocket.Conn
 
 	// send is a buffer channel temporarily outgoing messages.
 	Send      chan Message
