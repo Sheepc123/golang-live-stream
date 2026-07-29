@@ -10,12 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RespFail Process the Unauthorized Error.
-func respFail(c *gin.Context) {
-	response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
-	c.Abort()
-}
-
 // JWTAuth Verifies the access token before handlers run.
 func JWTAuth(Cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -23,14 +17,14 @@ func JWTAuth(Cfg *config.Config) gin.HandlerFunc {
 
 		// if authHeader must use the format : Bearer <token>
 		if authHeader == "" {
-			respFail(c)
+			response.Abort(c, errno.Unauthorized)
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			respFail(c)
+			response.Abort(c, errno.Unauthorized)
 			return
 		}
 
@@ -39,8 +33,7 @@ func JWTAuth(Cfg *config.Config) gin.HandlerFunc {
 		claims, err := Jwttoken.ParseAccessToken(parts[1], jwtSecret)
 
 		if err != nil {
-			respFail(c)
-			c.Abort()
+			response.Abort(c, errno.InvalidToken)
 			return
 		}
 		c.Set("user_id", claims.UserID)

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"gorm.io/gorm"
 )
 
-var ErrUserNotFound = errors.New("user not found")
+var ErrUserNotFound  error = errno.UserNotFound
+
 
 type UserRepo interface {
 	FindByUsername(ctx context.Context, username string) (*entity.User, error)

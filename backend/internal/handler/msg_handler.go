@@ -25,7 +25,7 @@ func (h *MsgHandler) History(c *gin.Context) {
 	roomId, err := strconv.ParseInt(c.Param("id"), 10, 64)
 
 	if err != nil {
-		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
+		response.Error(c, errno.InvalidRequest)
 		return
 	}
 
@@ -34,7 +34,7 @@ func (h *MsgHandler) History(c *gin.Context) {
 	msgs, err := h.MsgService.GetHistoryMessage(c.Request.Context(), roomId, limit)
 
 	if err != nil {
-		response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
+		response.Error(c, err)
 		return
 	}
 

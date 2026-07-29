@@ -108,7 +108,7 @@ func NewRouter(
 	}
 
 	r.NoRoute(func(c *gin.Context) {
-		response.Fail(c, 404, errno.RouteNotFound.Code, errno.RouteNotFound.Msg, gin.H{})
+		response.Error(c,errno.RouteNotFound)
 	})
 	return r, wsManager
 }

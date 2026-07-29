@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/config"
+	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/model"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	Jwttoken "github.com/Sheepc123/golang-live-stream/internal/token"
@@ -21,11 +22,6 @@ type AuthService struct {
 	accessTokenExpire time.Duration
 }
 
-var (
-	ErrUserNotFound  = errors.New("User can not Found")
-	ErrPasswordWrong = errors.New("PassWord Wrong")
-)
-
 func NewAuthService(jwtcfg config.JWTConfig, userepo repo.UserRepo) *AuthService {
 	return &AuthService{
 		userRepo:          userepo,
@@ -40,7 +36,7 @@ func (s *AuthService) LoginService(ctx context.Context, login *model.LoginReques
 
 	if err != nil {
 		if errors.Is(err, repo.ErrUserNotFound) {
-			return nil, ErrUserNotFound
+			return nil, errno.InvalidCredentials
 		}
 		return nil, err
 	}
@@ -48,7 +44,7 @@ func (s *AuthService) LoginService(ctx context.Context, login *model.LoginReques
 	// verify password using bcrypt
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(login.Password))
 	if err != nil {
-		return nil, ErrPasswordWrong
+		return nil, errno.InvalidCredentials
 	}
 
 	accessToken, err := Jwttoken.GenerateAccessToken(

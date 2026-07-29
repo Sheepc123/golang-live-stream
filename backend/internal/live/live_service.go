@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 )
 
@@ -41,9 +42,7 @@ func (s *LiveService) LiveStart(ctx context.Context, roomId int64, OwnerId int64
 		return 0, e
 	}
 
-	room.Status = "live"
-
-	if err := s.roomRepo.Update(ctx, room); err != nil {
+	if err := s.roomRepo.UpdateStatus(ctx, roomId, entity.RoomStatusLive); err != nil {
 		log.Printf("set room live fail (room=%d): %v", roomId, err)
 	}
 	s.notifyLikeCount(ctx, roomId)
@@ -65,9 +64,7 @@ func (s *LiveService) LiveStop(ctx context.Context, roomId int64, OwnerId int64)
 		return err
 	}
 
-	room.Status = "offline"
-
-	if err := s.roomRepo.Update(ctx, room); err != nil {
+	if err := s.roomRepo.UpdateStatus(ctx, roomId, entity.RoomStatusStop); err != nil {
 		return err
 	}
 

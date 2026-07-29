@@ -1,13 +1,13 @@
 package Jwttoken
 
 import (
-	"errors"
 	"time"
 
+	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	jwtlib "github.com/golang-jwt/jwt/v5"
 )
 
-var ErrInvalidToken = errors.New("invalid token")
+var ErrInvalidToken error = errno.InvalidToken
 
 type Claims struct {
 	UserID   int64  `json:"user_id"`

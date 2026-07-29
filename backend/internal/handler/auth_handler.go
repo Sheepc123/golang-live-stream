@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"errors"
-
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/model"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
@@ -31,24 +29,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var req model.LoginRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
-		response.Fail(c, 400, errno.InvalidRequest.Code, errno.InvalidRequest.Msg, gin.H{})
+		response.Error(c, errno.InvalidRequest)
 		return
 	}
 
 	loginResp, err := h.authService.LoginService(c.Request.Context(), &req)
 
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrUserNotFound):
-			response.Fail(c, 400, errno.UserNotFound.Code, errno.UserNotFound.Msg, gin.H{})
-
-		case errors.Is(err, service.ErrPasswordWrong):
-			response.Fail(c, 400, errno.WrongPassword.Code, errno.WrongPassword.Msg, gin.H{})
-
-		default:
-			response.Fail(c, 500, errno.InternalServerError.Code, errno.InternalServerError.Msg, gin.H{})
-		}
-		return
+		response.Error(c, err)
 	}
 	response.Ok(c, loginResp)
 }

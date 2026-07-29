@@ -53,20 +53,20 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 	accessToken := c.Query("token")
 
 	if accessToken == "" {
-		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
+		response.Error(c, errno.Unauthorized)
 		return
 	}
 
 	// get userId and Username through token
 	claims, err := Jwttoken.ParseAccessToken(accessToken, h.jwtSecret)
 	if err != nil {
-		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
+		response.Error(c, errno.Unauthorized)
 		return
 	}
 	//Get roomId through url
 	roomId, err := strconv.ParseInt(c.Param("room_id"), 10, 64)
 	if err != nil {
-		response.Fail(c, 400, errno.WSInvalidRoomID.Code, errno.WSInvalidRoomID.Msg, gin.H{})
+		response.Error(c, errno.InvalidRequest)
 		return
 	}
 

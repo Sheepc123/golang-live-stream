@@ -5,14 +5,15 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 var (
-	ErrLiveSessionExists    = errors.New("Live session already active")
-	ErrLiveSessionNotActive = errors.New("Live session not active")
+	ErrLiveSessionExists    error = errno.LiveAlreadyStarted
+	ErrLiveSessionNotActive error = errno.LiveNotActive
 )
 
 type LSRepo interface {

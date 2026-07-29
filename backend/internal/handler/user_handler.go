@@ -18,7 +18,8 @@ func (h *UserHandler) Me(c *gin.Context) {
 	userProfile, ok := UserProfileFromContext(c)
 
 	if !ok {
-		response.Fail(c, 401, errno.Unauthorized.Code, errno.Unauthorized.Msg, gin.H{})
+		response.Error(c, errno.Unauthorized)
+		return
 	}
 
 	response.Ok(c, userProfile)

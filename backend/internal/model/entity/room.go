@@ -2,10 +2,10 @@ package entity
 
 import "time"
 
-// const (
-// 	RoomStatusLive = "live"
-// 	RoomStatusLive = "offline"
-// )
+const (
+	RoomStatusLive = "live"
+	RoomStatusStop = "offline"
+)
 
 type Room struct {
 	ID          int64  `gorm:"primaryKey;autoIncrement"`

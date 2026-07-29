@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"gorm.io/gorm"
 )
 
-var ErrRoomNotFound = errors.New("room not found")
-var ErrRoomForbidden = errors.New("permission denied : not the room owner.")
+var ErrRoomNotFound error = errno.RoomNotFound
+var ErrRoomForbidden error = errno.RoomForbidden
 
 type RoomRepo interface {
 	RoomList(ctx context.Context) ([]entity.Room, error)
@@ -17,9 +18,10 @@ type RoomRepo interface {
 
 	ListMyRoom(ctx context.Context, OwnerID int64) ([]entity.Room, error)
 	Create(ctx context.Context, room *entity.Room) error
-	Update(ctx context.Context, room *entity.Room) error
 	Delete(ctx context.Context, id int64) error
-	
+
+	UpdateStatus(ctx context.Context, roomId int64, status string) error
+	UpdateProfile(ctx context.Context, room *entity.Room) error
 }
 
 type roomRepo struct {
@@ -73,10 +75,32 @@ func (r *roomRepo) Create(ctx context.Context, room *entity.Room) error {
 	return r.db.WithContext(ctx).Create(room).Error
 }
 
-func (r *roomRepo) Update(ctx context.Context, room *entity.Room) error {
-	return r.db.WithContext(ctx).Save(room).Error
-}
-
 func (r *roomRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&entity.Room{}, id).Error
+}
+
+func (r *roomRepo) UpdateStatus(ctx context.Context, roomId int64, status string) error {
+	res := r.db.WithContext(ctx).Model(&entity.Room{}).
+		Where("id = ?", roomId).
+		Update("status", status)
+
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrRoomNotFound
+	}
+	return nil
+}
+
+func (r *roomRepo) UpdateProfile(ctx context.Context, room *entity.Room) error {
+	res := r.db.WithContext(ctx).Model(&entity.Room{}).
+		Where("id = ?", room.ID).
+		Select("title", "channel_name", "category", "cover_url", "stream_url", "description").
+		Updates(room)
+
+	if res.Error != nil {
+		return res.Error
+	}
+	return nil
 }

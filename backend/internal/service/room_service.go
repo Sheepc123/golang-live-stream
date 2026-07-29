@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 
 	"github.com/Sheepc123/golang-live-stream/internal/model"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
@@ -13,8 +12,6 @@ import (
 type RoomService struct {
 	roomRepo repo.RoomRepo
 }
-
-var ErrRoomNotFound = errors.New("room not found")
 
 func NewRoomService(r repo.RoomRepo) *RoomService {
 	return &RoomService{roomRepo: r}
@@ -71,7 +68,7 @@ func (s *RoomService) UpdateRoom(ctx context.Context, ownerID int64, roomID int6
 	room.Description = req.Description
 
 	// 4. 落库
-	if err := s.roomRepo.Update(ctx, room); err != nil {
+	if err := s.roomRepo.UpdateProfile(ctx, room); err != nil {
 		return nil, err
 	}
 
