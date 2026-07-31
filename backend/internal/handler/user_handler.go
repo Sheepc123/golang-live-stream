@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
+	"github.com/Sheepc123/golang-live-stream/internal/ginx"
 	"github.com/Sheepc123/golang-live-stream/internal/model"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	"github.com/gin-gonic/gin"
@@ -26,13 +27,13 @@ func (h *UserHandler) Me(c *gin.Context) {
 }
 
 func UserProfileFromContext(c *gin.Context) (model.UserProfile, bool) {
-	username, ok := GetContextValue[string](c, "user_name")
+	username, ok := ginx.GetContextValue[string](c, "user_name")
 
 	if !ok {
 		return model.UserProfile{}, false
 	}
 
-	userid, ok := GetContextValue[int64](c, "user_id")
+	userid, ok := ginx.GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		return model.UserProfile{}, false
@@ -42,24 +43,4 @@ func UserProfileFromContext(c *gin.Context) (model.UserProfile, bool) {
 		Username: username,
 		UserID:   userid,
 	}, true
-}
-
-// get the T from context
-// from JWT Token we can get the user_id and User_name
-func GetContextValue[T any](c *gin.Context, key string) (T, bool) {
-	value, ok := c.Get(key)
-
-	if !ok {
-		var zero T
-		return zero, false
-	}
-
-	realValue, ok := value.(T)
-
-	if !ok {
-		var zero T
-		return zero, false
-	}
-
-	return realValue, true
 }

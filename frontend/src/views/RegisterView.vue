@@ -7,87 +7,83 @@ const router = useRouter()
 const form = reactive({
   username: '',
   password: '',
-  remember: false,
+  confirmPassword: '',
 })
 
 const showPassword = ref(false)
 const loading = ref(false)
 const errorMsg = ref('')
 
-async function handleLogin() {
+// 与后端 usernamePattern + binding tag 保持一致的规则。
+// 前端校验只为了即时提示，真正的把关在后端 —— 绕过前端不会绕过服务器。
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/
 
+function validate(): string {
+  const username = form.username.trim()
+
+  if (!username) return '请输入用户名'
+  if (!USERNAME_RE.test(username)) return '用户名需为 3-32 位字母、数字或下划线'
+  if (!form.password) return '请输入密码'
+  if (form.password.length < 6 || form.password.length > 32) return '密码长度需为 6-32 位'
+  if (form.password !== form.confirmPassword) return '两次输入的密码不一致'
+
+  return ''
+}
+
+async function handleRegister() {
   errorMsg.value = ''
 
-  // check accounts
-  if (!form.username.trim()) {
-    errorMsg.value = 'Please enter username'
-    return
-  }
-
-  // 检查密码
-  if (!form.password) {
-    errorMsg.value = 'Please enter password'
+  const msg = validate()
+  if (msg) {
+    errorMsg.value = msg
     return
   }
 
   loading.value = true
 
   try {
-    // send JSON data 
-      const res  = await fetch('/api/v1/auth/login', {
-        method : 'POST',
-        headers:{
-           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: form.username,
-          password: form.password,
-        }),
-      })
-      
+    // 确认密码不发给后端：那是纯前端的一致性检查
+    const res = await fetch('/api/v1/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: form.username.trim(),
+        password: form.password,
+      }),
+    })
+
     const result = await res.json()
 
-     if (result.code !== 0) {
-      errorMsg.value = result.msg || 'Login failed'
+    if (result.code !== 0) {
+      errorMsg.value = result.msg || '注册失败'
       return
     }
 
+    // 后端「注册即登录」，返回结构与 /auth/login 完全一致，
+    // 所以这里的落盘逻辑和 LoginView 保持同一套 key。
     localStorage.setItem('user', JSON.stringify(result.data))
     localStorage.setItem('token', result.data.access_token)
-    localStorage.setItem('token_type',result.data.token_type)
-    localStorage.setItem('login_at',String(Date.now()))
-    
-    localStorage.setItem('expires_in',String(result.data.expires_in))
+    localStorage.setItem('token_type', result.data.token_type)
+    localStorage.setItem('login_at', String(Date.now()))
+    localStorage.setItem('expires_in', String(result.data.expires_in))
 
-    // 「记住我」：勾选 = 持久登录；不勾选 = 关闭浏览器后失效。
-    // token 仍然放 localStorage（读取端统一从这里取），
-    // 这里只额外记录用户的选择，真正的判定放在路由守卫里。
-    localStorage.setItem('remember', form.remember ? '1' : '0')
-
-    // 不记住时，往 sessionStorage 放一个「会话存活」哨兵。
-    // sessionStorage 会在浏览器 / 标签页关闭后自动清空，
-    // 守卫下次发现哨兵消失，就知道浏览器关过，登录态作废。
-    if (form.remember) {
-      sessionStorage.removeItem('session_alive')
-    } else {
-      sessionStorage.setItem('session_alive', '1')
-    }
-
-
+    // 注册当作一次未勾选「记住我」的登录：关闭浏览器后需重新登录。
+    localStorage.setItem('remember', '0')
+    sessionStorage.setItem('session_alive', '1')
 
     router.push('/rooms')
   } catch {
-    // This usually means the backend is not running or the proxy is not configured.
-    errorMsg.value = 'Cannot connect to server'
+    errorMsg.value = '无法连接服务器'
   } finally {
     loading.value = false
   }
 }
-
-
 </script>
+
 <template>
-  <main class="login-page">
+  <main class="register-page">
     <section class="brand-panel">
       <div class="brand-content">
         <div class="logo">
@@ -97,19 +93,19 @@ async function handleLogin() {
 
         <div class="brand-introduction">
           <p class="eyebrow">LIVE STREAMING PLATFORM</p>
-          <h1>连接每一刻精彩</h1>
+          <h1>开启你的直播</h1>
           <p class="description">
-            观看精彩直播，发送实时弹幕，
+            创建账号，开设属于自己的直播间，
             <br />
-            与主播和观众共同分享此刻。
+            让每一刻精彩都被看见。
           </p>
         </div>
 
         <div class="danmaku-preview" aria-hidden="true">
-          <span class="danmaku danmaku-one">主播好厉害！</span>
-          <span class="danmaku danmaku-two">666</span>
-          <span class="danmaku danmaku-three">前排围观</span>
-          <span class="danmaku danmaku-four">来了来了</span>
+          <span class="danmaku danmaku-one">欢迎新主播！</span>
+          <span class="danmaku danmaku-two">冲鸭</span>
+          <span class="danmaku danmaku-three">已关注</span>
+          <span class="danmaku danmaku-four">第一次来</span>
         </div>
 
         <p class="brand-footer">实时 · 互动 · 分享</p>
@@ -117,25 +113,25 @@ async function handleLogin() {
     </section>
 
     <section class="form-panel">
-      <div class="login-container">
+      <div class="register-container">
         <div class="mobile-logo">
           <span class="logo-icon">▶</span>
           <span>Time-Live stream</span>
         </div>
 
         <header class="form-header">
-          <h2>欢迎回来</h2>
-          <p>登录你的账号，进入精彩直播间</p>
+          <h2>创建账号</h2>
+          <p>注册成功后将自动登录</p>
         </header>
 
-        <form class="login-form" @submit.prevent="handleLogin">
+        <form class="register-form" @submit.prevent="handleRegister">
           <label class="form-field">
-            <span class="field-label">账号</span>
+            <span class="field-label">用户名</span>
             <input
               v-model="form.username"
               type="text"
               autocomplete="username"
-              placeholder="请输入用户名或邮箱"
+              placeholder="3-32 位字母、数字或下划线"
               :disabled="loading"
             />
           </label>
@@ -147,8 +143,8 @@ async function handleLogin() {
               <input
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
-                autocomplete="current-password"
-                placeholder="请输入密码"
+                autocomplete="new-password"
+                placeholder="6-32 位"
                 :disabled="loading"
               />
 
@@ -163,31 +159,33 @@ async function handleLogin() {
             </div>
           </label>
 
-          <div class="form-options">
-            <label class="remember-option">
-              <input v-model="form.remember" type="checkbox" />
-              <span>记住我</span>
-            </label>
-
-            <button class="text-button" type="button">忘记密码？</button>
-          </div>
+          <label class="form-field">
+            <span class="field-label">确认密码</span>
+            <input
+              v-model="form.confirmPassword"
+              :type="showPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              placeholder="请再次输入密码"
+              :disabled="loading"
+            />
+          </label>
 
           <p v-if="errorMsg" class="error-message">
             {{ errorMsg }}
           </p>
 
-          <button class="login-button" type="submit" :disabled="loading">
+          <button class="register-button" type="submit" :disabled="loading">
             <span v-if="loading" class="loading-spinner"></span>
-            {{ loading ? '登录中...' : '登录' }}
+            {{ loading ? '注册中...' : '注册' }}
           </button>
         </form>
 
-        <p class="register-entry">
-          还没有账号？
-          <button class="text-button" type="button" @click="router.push('/register')">立即注册</button>
+        <p class="login-entry">
+          已有账号？
+          <button class="text-button" type="button" @click="router.push('/login')">
+            返回登录
+          </button>
         </p>
-
-        <p class="demo-account">测试账号：admin1.2.3 / 123456</p>
       </div>
     </section>
   </main>
@@ -207,7 +205,7 @@ button {
   border: 0;
 }
 
-.login-page {
+.register-page {
   width: 100%;
   min-height: 100vh;
   display: grid;
@@ -365,7 +363,7 @@ button {
   background: #ffffff;
 }
 
-.login-container {
+.register-container {
   width: 100%;
   max-width: 420px;
 }
@@ -393,7 +391,7 @@ button {
   font-size: 15px;
 }
 
-.login-form {
+.register-form {
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -461,28 +459,6 @@ button {
   background: transparent;
 }
 
-.form-options {
-  margin-top: -5px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.remember-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #666b80;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.remember-option input {
-  width: 16px;
-  height: 16px;
-  accent-color: #6d75e8;
-}
-
 .text-button {
   padding: 0;
   color: #646ee4;
@@ -504,7 +480,7 @@ button {
   background: #fff1f1;
 }
 
-.login-button {
+.register-button {
   height: 52px;
   display: flex;
   align-items: center;
@@ -521,12 +497,12 @@ button {
     box-shadow 0.2s;
 }
 
-.login-button:hover:not(:disabled) {
+.register-button:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 18px 34px rgba(104, 98, 221, 0.3);
 }
 
-.login-button:disabled {
+.register-button:disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
@@ -540,17 +516,10 @@ button {
   animation: spin 0.7s linear infinite;
 }
 
-.register-entry {
+.login-entry {
   margin: 27px 0 0;
   color: #8a8fa3;
   font-size: 14px;
-  text-align: center;
-}
-
-.demo-account {
-  margin: 18px 0 0;
-  color: #b1b4c1;
-  font-size: 12px;
   text-align: center;
 }
 
@@ -561,7 +530,7 @@ button {
 }
 
 @media (max-width: 900px) {
-  .login-page {
+  .register-page {
     grid-template-columns: 1fr;
   }
 

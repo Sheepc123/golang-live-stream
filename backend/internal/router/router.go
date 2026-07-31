@@ -46,7 +46,6 @@ func NewRouter(
 
 	// Message function
 	msgService := service.NewMsgService(msgRepo)
-	msgHandler := handler.NewMsgHandler(msgService)
 
 	// websocket funciton
 	wsReistry := ws.NewActionRegistry()
@@ -58,6 +57,8 @@ func NewRouter(
 	SMgr := live.NewSessionManager(lsRepo, LikeCounter, rdb, lo)
 	ls := live.NewLiveService(SMgr, roomRepo, wsManager)
 	liveHandler := live.NewLiveHandler(ls)
+
+	msgHandler := handler.NewMsgHandler(msgService, SMgr)
 
 	// register actions
 	// register ChatAction
@@ -72,6 +73,7 @@ func NewRouter(
 		auth := api.Group("/auth")
 		{
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/register", authHandler.Register)
 		}
 
 		ws := api.Group("/ws")
@@ -108,7 +110,7 @@ func NewRouter(
 	}
 
 	r.NoRoute(func(c *gin.Context) {
-		response.Error(c,errno.RouteNotFound)
+		response.Error(c, errno.RouteNotFound)
 	})
 	return r, wsManager
 }

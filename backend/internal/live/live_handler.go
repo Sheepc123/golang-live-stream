@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
-	"github.com/Sheepc123/golang-live-stream/internal/handler"
+	"github.com/Sheepc123/golang-live-stream/internal/ginx"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	"github.com/gin-gonic/gin"
@@ -55,7 +55,7 @@ func (ls *LiveHandler) LiveStop(c *gin.Context) {
 }
 
 func parseOwnerAndRoom(c *gin.Context) (ownerId, roomId int64, ok bool) {
-	ownerId, ok = handler.GetContextValue[int64](c, "user_id")
+	ownerId, ok = ginx.GetContextValue[int64](c, "user_id")
 	if !ok {
 		response.Error(c, errno.InvalidRequest)
 		return 0, 0, false

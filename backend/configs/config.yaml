@@ -1,6 +1,11 @@
 server:
   port: "8080" 
 
+log:
+  level: "info"      # 开发时可改 debug;生产必须 info 或以上
+  format: "console"  # 开发用 console(彩色),生产用 json
+
+
 mysql:
   host: "127.0.0.1"
   port: "3306"
@@ -10,8 +15,8 @@ mysql:
   charset: "utf8mb4"
   max_open_conns: 50
   max_idle_conns: 10
-  conn_max_lifetime: 3600
-  # 1 hour
+  conn_max_lifetime: 3600 # 1 hour
+  log_level: "warn"  
 
 jwt:
   secret: "dev-secret" # 
@@ -20,7 +25,7 @@ jwt:
 redis:
   host: "127.0.0.1"
   port: "6379"
-  password: "" # 本地无密码
+  password: "" 
   db: 0
 
 kafka:

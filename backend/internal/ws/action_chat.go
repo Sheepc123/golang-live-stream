@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -34,8 +35,19 @@ func (a *ChatAction) Execute(c *Client, m Message) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	sId := a.sessionMgr.CurrentID(ctx, c.RoomID)
+	sId, err := a.sessionMgr.ResolveID(ctx, c.RoomID)
 	cancel()
+
+	if err != nil {
+		log.Printf("resolve session for chat fail (room=%d): %v", c.RoomID, err)
+		return
+	}
+
+	if sId == 0 {
+		// No session means this message could never be read back from history.
+		log.Printf("chat dropped, no active session (room=%d, user=%d)", c.RoomID, c.UserID)
+		return
+	}
 
 	outMsg := NewChatMessage(c.UserID, c.RoomID, c.Username, content, sId)
 

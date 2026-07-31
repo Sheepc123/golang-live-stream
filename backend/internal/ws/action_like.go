@@ -26,7 +26,12 @@ func (a *LikeAction) Execute(c *Client, m Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	SId := a.sessionMgr.CurrentID(ctx, c.RoomID)
+	SId, err := a.sessionMgr.ResolveID(ctx, c.RoomID)
+
+	if err != nil {
+		log.Printf("resolve session for chat fail (room=%d): %v", c.RoomID, err)
+		return
+	}
 
 	if SId == 0 {
 		log.Printf("like dropped, no active session (room=%d, user=%d)", c.RoomID, c.UserID)

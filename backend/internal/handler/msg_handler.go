@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"context"
 	"strconv"
+	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
+	"github.com/Sheepc123/golang-live-stream/internal/live"
 	"github.com/Sheepc123/golang-live-stream/internal/model"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	"github.com/Sheepc123/golang-live-stream/internal/service"
@@ -12,11 +15,13 @@ import (
 
 type MsgHandler struct {
 	MsgService *service.MsgService
+	SMgr       *live.SessionManager
 }
 
-func NewMsgHandler(s *service.MsgService) *MsgHandler {
+func NewMsgHandler(s *service.MsgService, ls *live.SessionManager) *MsgHandler {
 	return &MsgHandler{
 		MsgService: s,
+		SMgr:       ls,
 	}
 }
 
@@ -31,7 +36,27 @@ func (h *MsgHandler) History(c *gin.Context) {
 
 	limit, _ := strconv.Atoi(c.Query("limit"))
 
-	msgs, err := h.MsgService.GetHistoryMessage(c.Request.Context(), roomId, limit)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+
+	sessionId, err := h.SMgr.ResolveID(ctx, roomId)
+
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// when sessionId = 0, it means there is no current session, so no history.
+	if sessionId == 0 {
+		response.Ok(c, model.MessageListResponse{
+			Messages: []model.MsgResponse{},
+			Total:    0,
+		})
+
+		return
+	}
+
+	msgs, err := h.MsgService.GetHistoryMessage(ctx, roomId, sessionId, limit)
 
 	if err != nil {
 		response.Error(c, err)

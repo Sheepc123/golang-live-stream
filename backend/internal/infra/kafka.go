@@ -2,7 +2,6 @@ package infra
 
 import (
 	"log"
-	"strconv"
 
 	"github.com/IBM/sarama"
 	"github.com/Sheepc123/golang-live-stream/internal/config"
@@ -42,10 +41,10 @@ func NewKafkaProducer(cfg config.KafKaConfig) (*KafkaProducer, error) {
 
 }
 
-func (k *KafkaProducer) Publish(roomId int64, value []byte) {
+func (k *KafkaProducer) Publish(PartitionKey string, value []byte) {
 	k.producer.Input() <- &sarama.ProducerMessage{
 		Topic: k.topic,
-		Key:   sarama.StringEncoder(strconv.FormatInt(roomId, 10)),
+		Key:   sarama.StringEncoder(PartitionKey),
 		Value: sarama.ByteEncoder(value),
 	}
 }

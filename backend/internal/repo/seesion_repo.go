@@ -21,7 +21,7 @@ type LSRepo interface {
 	// ErrLiveSessionNotActive means the database do not have the live session
 	SaveSession(ctx context.Context, sessionId, likeCount, peakCount int64) error
 
-	// Find the LiveSession through roomId.
+	// Find the LiveSession by roomId through Database.
 	// If return nil,nil it means do not find the corresponding live_session Record .
 	Current(ctx context.Context, roomId int64) (*entity.LiveSession, error)
 

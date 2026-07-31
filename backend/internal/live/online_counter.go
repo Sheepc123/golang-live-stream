@@ -100,9 +100,9 @@ var PeakScript = redis.NewScript(`
 	local new = tonumber(ARGV[1])
 
 	if new > cur then 
-		redis.call('SET',KEYS[1],new)
+		redis.call('SET',KEYS[1], new)
 	end
-	redis.call('EXPIRE',KEYS[1]),ARGV[2])
+	redis.call('EXPIRE', KEYS[1], ARGV[2])
 	return redis.call('GET',KEYS[1])
 `)
 

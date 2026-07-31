@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
+	"github.com/Sheepc123/golang-live-stream/internal/ginx"
 	"github.com/Sheepc123/golang-live-stream/internal/model"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	"github.com/Sheepc123/golang-live-stream/internal/service"
@@ -65,7 +66,7 @@ func (h *RoomHandler) GetRoomByID(c *gin.Context) {
 // GETMineRoom handler GET /api/v1/rooms/mine
 func (h *RoomHandler) ListMyRoom(c *gin.Context) {
 
-	ownerId, exits := GetContextValue[int64](c, "user_id")
+	ownerId, exits := ginx.GetContextValue[int64](c, "user_id")
 
 	if !exits {
 		response.Error(c, errno.Unauthorized)
@@ -91,7 +92,7 @@ func (h *RoomHandler) ListMyRoom(c *gin.Context) {
 
 // createRoom handle POST /api/v1/rooms
 func (h *RoomHandler) CreatRoom(c *gin.Context) {
-	ownerId, ok := GetContextValue[int64](c, "user_id")
+	ownerId, ok := ginx.GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		response.Error(c, errno.Unauthorized)
@@ -109,6 +110,7 @@ func (h *RoomHandler) CreatRoom(c *gin.Context) {
 
 	if err != nil {
 		response.Error(c, err)
+		return
 	}
 
 	response.Ok(c, model.NewRoomResponse(room))
@@ -116,7 +118,7 @@ func (h *RoomHandler) CreatRoom(c *gin.Context) {
 
 // UpdateRoom handle PUT /api/v1/rooms/id
 func (h *RoomHandler) UpdateRoom(c *gin.Context) {
-	ownerId, ok := GetContextValue[int64](c, "user_id")
+	ownerId, ok := ginx.GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		response.Error(c, errno.InvalidRequest)
@@ -153,7 +155,7 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 
 // DeleteRoom handle DELETE /api/v1/rooms/:id
 func (h *RoomHandler) DeleteRoom(c *gin.Context) {
-	ownerId, ok := GetContextValue[int64](c, "user_id")
+	ownerId, ok := ginx.GetContextValue[int64](c, "user_id")
 
 	if !ok {
 		response.Error(c, errno.Unauthorized)

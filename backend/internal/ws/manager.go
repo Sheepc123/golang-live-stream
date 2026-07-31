@@ -3,6 +3,7 @@ package ws
 import (
 	"encoding/json"
 	"log"
+	"strconv"
 	"sync"
 
 	"github.com/Sheepc123/golang-live-stream/internal/infra"
@@ -154,9 +155,9 @@ func (m *Manager) PersistMsg(msg Message) {
 	data, err := json.Marshal(msg)
 
 	if err != nil {
-		log.Printf("persist marshal fail (room = %d): %v", msg.RoomID, msg)
+		log.Printf("persist marshal fail (room=%d, user=%d): %v", msg.RoomID, msg.UserID, err)
 		return
 	}
-	m.producer.Publish(msg.RoomID, data)
+	m.producer.Publish(strconv.FormatInt(msg.UserID, 10), data)
 
 }

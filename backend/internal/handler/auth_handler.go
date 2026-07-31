@@ -37,6 +37,26 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	if err != nil {
 		response.Error(c, err)
+		return
 	}
 	response.Ok(c, loginResp)
+}
+
+// POST /api/v1/register
+func (h *AuthHandler) Register(c *gin.Context) {
+	var req model.RegisterRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errno.InvalidRequest)
+		return
+	}
+
+	resp, err := h.authService.RegisterService(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Ok(c, resp)
+
 }

@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/Sheepc123/golang-live-stream/internal/config"
@@ -42,18 +44,27 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 			session.MarkMessage(msg, "")
 			continue
 		}
+		sendAt := ev.Timestamp
+		if sendAt <= 0 {
+			sendAt = time.Now().UnixMilli()
+			log.Printf("consumer: missing timestamp, fallback to now (room=%d, offset=%d)",
+				ev.RoomID, msg.Offset)
+		}
 
 		entityMsg := &entity.Message{
+			EventID:       fmt.Sprintf("%d-%d", msg.Partition, msg.Offset),
 			RoomID:        ev.RoomID,
 			UserID:        ev.UserID,
 			Username:      ev.Username,
 			Content:       ev.Content,
 			Type:          ev.Type,
 			LiveSessionID: ev.LiveSessionID,
+			SentAt:        sendAt,
 		}
 
-		if err := h.msgRepo.Create(session.Context(), entityMsg); err != nil {
+		if err := h.msgRepo.CreateIfAbsent(session.Context(), entityMsg); err != nil {
 			log.Printf("consumer write db fail (room=%d, offset=%d): %v", ev.RoomID, msg.Offset, err)
+			return err
 		}
 		session.MarkMessage(msg, "")
 	}

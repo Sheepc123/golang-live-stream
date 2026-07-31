@@ -5,6 +5,7 @@ import LoginView from '../views/LoginView.vue'
 import RoomDetailView from '@/views/RoomDetailView.vue'
 import MyRoomsView from '@/views/MyRoomsView.vue'
 import RoomConsoleView from '@/views/RoomConsoleView.vue'
+import RegisterView from '@/views/RegisterView.vue'
 
 
 const router = createRouter({
@@ -23,6 +24,13 @@ const router = createRouter({
       name: 'login',
       component: LoginView,
     },
+
+        {
+        // 注册页面：注册成功后自动登录并跳转 /rooms
+        path: '/register',
+        name: 'register',
+        component: RegisterView,
+      },
     {
       // 兼容旧地址：以后主要使用 /rooms
       path: '/home',
@@ -111,6 +119,8 @@ function hasValidToken() {
   return Date.now() < expiresAt
 }
 
+// 已登录用户不应再看到登录/注册页
+const guestOnlyPaths = ['/login', '/register']
 
 router.beforeEach((to)=> {
 

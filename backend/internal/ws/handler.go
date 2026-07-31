@@ -80,9 +80,6 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 	username := claims.Username
 	client := NewClient(roomId, userId, username, conn)
 
-	if err != nil {
-		log.Printf("resolve session on connect fail (room=%d): %v", roomId, err)
-	}
 
 	h.manager.TrackConn()
 	defer h.manager.UnTrackConn()
@@ -109,10 +106,10 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 
 	log.Printf("User join the live stream room: room_id = %d,user_id = %d,username = %v", roomId, userId, username)
 
-	ctx, Cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	onlineCount := h.SessionMgr.OnlineCount(ctx, roomId)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	onlineCount := h.SessionMgr.ViewerJoin(ctx, roomId, userId)
 	currentLikeCount := h.SessionMgr.GetLikeCount(ctx, roomId)
-	Cancel()
+	cancel()
 
 	likeCountMsg := NewLikeMessageCount(roomId, currentLikeCount)
 	client.Send <- likeCountMsg

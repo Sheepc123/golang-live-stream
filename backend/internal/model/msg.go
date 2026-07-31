@@ -25,6 +25,6 @@ func NewMsgResponse(m *entity.Message) MsgResponse {
 		Username:  m.Username,
 		Content:   m.Content,
 		Type:      m.Type,
-		Timestamp: m.CreatedAt.Unix(),
+		Timestamp: m.SentAt,
 	}
 }

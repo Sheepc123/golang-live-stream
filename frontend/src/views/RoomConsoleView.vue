@@ -220,7 +220,7 @@ function createLocalMessage(type: 'system' | 'error', content: string): WSMessag
     user_id: 0,
     username: 'system',
     content,
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp: Date.now(),
   }
 }
 

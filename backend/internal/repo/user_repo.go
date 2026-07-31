@@ -9,11 +9,12 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrUserNotFound  error = errno.UserNotFound
-
+var ErrUserNotFound error = errno.UserNotFound
+var ErrUserAlreadyExists error = errno.UserAlreadyExists
 
 type UserRepo interface {
 	FindByUsername(ctx context.Context, username string) (*entity.User, error)
+	Create(ctx context.Context, user *entity.User) error
 }
 
 type userRepo struct {
@@ -37,4 +38,13 @@ func (r *userRepo) FindByUsername(ctx context.Context, username string) (*entity
 	}
 
 	return &user, nil
+}
+
+func (r *userRepo) Create(ctx context.Context, user *entity.User) error {
+	err := r.db.WithContext(ctx).Create(user).Error
+
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return ErrUserAlreadyExists
+	}
+	return err
 }

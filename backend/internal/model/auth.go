@@ -25,3 +25,8 @@ type UserProfile struct {
 	Username string `json:"username"`
 	UserID   int64  `json:"user_id"`
 }
+
+type RegisterRequest struct {
+	Username  string `json:"username" binding:"required,min=3,max=32"`
+	Password string `json:"password" binding:"required,min=6,max=32"`
+}

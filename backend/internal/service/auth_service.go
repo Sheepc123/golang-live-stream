@@ -3,11 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/model"
+	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	Jwttoken "github.com/Sheepc123/golang-live-stream/internal/token"
 	"golang.org/x/crypto/bcrypt"
@@ -21,6 +24,8 @@ type AuthService struct {
 	jwtSecret         string
 	accessTokenExpire time.Duration
 }
+
+var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 func NewAuthService(jwtcfg config.JWTConfig, userepo repo.UserRepo) *AuthService {
 	return &AuthService{
@@ -47,6 +52,35 @@ func (s *AuthService) LoginService(ctx context.Context, login *model.LoginReques
 		return nil, errno.InvalidCredentials
 	}
 
+	return s.issueToken(user)
+}
+
+func (s *AuthService) RegisterService(ctx context.Context, rg *model.RegisterRequest) (*model.LoginResponse, error) {
+	username := strings.TrimSpace(rg.Username)
+
+	if !usernamePattern.MatchString(username) {
+		return nil, errno.InvalidRequest
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(rg.Password), bcrypt.DefaultCost)
+
+	if err != nil {
+		return nil, err
+	}
+
+	user := &entity.User{
+		Username: username,
+		Password: string(hashed),
+	}
+
+	if err := s.userRepo.Create(ctx, user); err != nil {
+		return nil, err
+	}
+	return s.issueToken(user)
+
+}
+
+func (s *AuthService) issueToken(user *entity.User) (*model.LoginResponse, error) {
 	accessToken, err := Jwttoken.GenerateAccessToken(
 		user.ID,
 		user.Username,
