@@ -11,11 +11,8 @@ import (
 )
 
 var (
-	raw = zap.NewNop()
-
-	global = zap.NewNop()
-	sugar  = global.Sugar()
-
+	l      = zap.NewNop()
+	s      = l.Sugar()
 	syncer zapcore.WriteSyncer
 )
 
@@ -80,64 +77,34 @@ func Init(cfg config.LogConfig) error {
 
 	syncer = ws
 
-	core := zapcore.NewCore(encoder, ws, level)
-
-	raw = zap.New(
-		core,
-		// 记录调用位置(文件:行号)
+	l = zap.New(
+		zapcore.NewCore(encoder, ws, level),
 		zap.AddCaller(),
 		// Error 及以上自动附带堆栈。
-		// 注意不要设成 Warn —— 抓堆栈很贵,而 Warn 在本项目里量不小。
+		// 不要设成 Warn —— 抓堆栈很贵,而本项目 Warn 的量不小。
 		zap.AddStacktrace(zapcore.ErrorLevel),
 	)
-
-	global = raw.WithOptions(zap.AddCallerSkip(1))
-	sugar = global.Sugar()
+	s = l.Sugar()
 
 	return nil
 }
 
-
 // L 返回原始 *zap.Logger,给热路径使用
-// 
+//
 // 热路径 = 每条弹幕/每次广播都会执行到的代码,例如:
 //   - ws.Manager.deliver
 //   - ws.BroadcastPool.runWoker
 //   - ws.Client.ReadPump / WritePump
 //   - consumer 的消费循环
-func L() *zap.Logger { return raw }
+func L() *zap.Logger { return l }
 
 // S 返回 SugaredLogger,给需要 printf 风格的冷路径使用。
-func S() *zap.SugaredLogger { return sugar }
-
-
-
-
-func Debug(msg string, fields ...zap.Field) { global.Debug(msg, fields...) }
-func Info(msg string, fields ...zap.Field)  { global.Info(msg, fields...) }
-func Warn(msg string, fields ...zap.Field)  { global.Warn(msg, fields...) }
-func Error(msg string, fields ...zap.Field) { global.Error(msg, fields...) }
-func Fatal(msg string, fields ...zap.Field) { global.Fatal(msg, fields...) }
-
-
-
-// ---------- printf 接口(方便,但有分配,仅限冷路径) ----------
-
-func Debugf(template string, args ...any) { sugar.Debugf(template, args...) }
-func Infof(template string, args ...any)  { sugar.Infof(template, args...) }
-func Warnf(template string, args ...any)  { sugar.Warnf(template, args...) }
-func Errorf(template string, args ...any) { sugar.Errorf(template, args...) }
-func Fatalf(template string, args ...any) { sugar.Fatalf(template, args...) }
-
-
+func S() *zap.SugaredLogger { return s }
 
 // 如果参数只是 zap.Int64(id) 这种零成本构造,直接调 Debug 即可,不用套判断。
 func DebugEnabled() bool {
-	return raw.Core().Enabled(zapcore.DebugLevel)
+	return l.Core().Enabled(zapcore.DebugLevel)
 }
-
-
-
 
 // Sync 把缓冲区里的日志强制刷出。必须在进程退出前调用。
 //
@@ -148,5 +115,5 @@ func Sync() {
 	if syncer != nil {
 		_ = syncer.Sync()
 	}
-	_ = raw.Sync()
+	_ = l.Sync()
 }
