@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
+
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"go.uber.org/zap"
 )
 
 // broadcastPattern "ws:room:*" can match ws:room:1,ws:room:2..... all room at once
@@ -20,7 +22,11 @@ func broadcastChannelString(roomId int64) string {
 func (m *Manager) publish(roomId int64, msg Message) {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("broadcast marshal fail : %v", err)
+		logger.L().Error("broadcast marshal fail",
+			zap.Int64("room_id", roomId),
+			zap.String("type", msg.Type),
+			zap.Error(err),
+		)
 		return
 	}
 
@@ -28,8 +34,10 @@ func (m *Manager) publish(roomId int64, msg Message) {
 	defer cancel()
 
 	if err := m.rdb.Publish(ctx, broadcastChannelString(roomId), data).Err(); err != nil {
-		log.Printf("redis failed to publish (roomId = %d) : %v", roomId, err)
-		return
+		logger.L().Error("redis publish fail",
+			zap.Int64("room_id", roomId),
+			zap.Error(err),
+		)
 	}
 }
 
@@ -47,7 +55,10 @@ func (m *Manager) subscribeLoop() {
 		var msg Message
 
 		if err := json.Unmarshal([]byte(redisMsg.Payload), &msg); err != nil {
-			log.Printf("redis failed to unmarshal (channel == %s) : %v", redisMsg.Channel, err)
+			logger.L().Error("redis payload unmarshal fail",
+				zap.String("channel", redisMsg.Channel),
+				zap.Error(err),
+			)
 			continue
 		}
 		m.pool.Submit(msg.RoomID, msg)

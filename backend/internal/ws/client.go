@@ -1,11 +1,12 @@
 package ws
 
 import (
-	"log"
 	"sync"
 	"time"
 
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 const (
@@ -18,10 +19,10 @@ const (
 
 // Client represents a user connected to a live room through websocket.
 type Client struct {
-	RoomID        int64
-	UserID        int64
-	Username      string
-	Conn          *websocket.Conn
+	RoomID   int64
+	UserID   int64
+	Username string
+	Conn     *websocket.Conn
 
 	// send is a buffer channel temporarily outgoing messages.
 	Send      chan Message
@@ -42,6 +43,7 @@ func NewClient(roomID int64, userId int64, username string, conn *websocket.Conn
 // dispatch msg through ActionRegistry
 func (c *Client) ReadPump(registry *ActionRegistry) {
 
+	c.Conn.SetReadLimit(4096)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 
 	c.Conn.SetPongHandler(func(string) error {
@@ -55,7 +57,13 @@ func (c *Client) ReadPump(registry *ActionRegistry) {
 		err := c.Conn.ReadJSON(&msg)
 
 		if err != nil {
-			log.Printf("read pump stopped (user=%d, room=%d): %v", c.UserID, c.RoomID, err)
+			if logger.DebugEnabled() {
+				logger.L().Debug("read pump stopped",
+					zap.Int64("user_id", c.UserID),
+					zap.Int64("room_id", c.RoomID),
+					zap.Error(err),
+				)
+			}
 			return
 		}
 
@@ -84,27 +92,40 @@ func (c *Client) WritePump() {
 			}
 
 			if err := c.Conn.WriteJSON(msg); err != nil {
-				log.Printf("write pump stopped (fall) : %v", err)
+				if logger.DebugEnabled() {
+					logger.L().Debug("write pump stopped",
+						zap.Int64("user_id", c.UserID),
+						zap.Int64("room_id", c.RoomID),
+						zap.Error(err),
+					)
+				}
 				return
 			}
+
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("write pump stopped (ping fail, user=%d): %v", c.UserID, err)
+				if logger.DebugEnabled() {
+					logger.L().Debug("ping failed, closing",
+						zap.Int64("user_id", c.UserID),
+						zap.Error(err),
+					)
+				}
 				return
 			}
-
 		}
-
 	}
 }
 
 func (c *Client) Close() {
 	c.closeOnce.Do(func() {
 		err := c.Conn.Close()
-		if err != nil {
-			log.Printf("fail to close websocket connection: %v", err)
+		if err != nil && logger.DebugEnabled() {
+			logger.L().Debug("close websocket fail",
+				zap.Int64("user_id", c.UserID),
+				zap.Error(err),
+			)
 		}
 	})
 }

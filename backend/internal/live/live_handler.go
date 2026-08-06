@@ -44,7 +44,7 @@ func (ls *LiveHandler) LiveStop(c *gin.Context) {
 		return
 	}
 
-	err := ls.LiveSerivce.LiveStop(c, roomId, ownerId)
+	err := ls.LiveSerivce.LiveStop(c.Request.Context(), roomId, ownerId)
 
 	if err != nil {
 		WriteLiveError(c, err)

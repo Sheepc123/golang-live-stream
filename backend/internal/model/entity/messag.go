@@ -10,7 +10,7 @@ type Message struct {
 	Content  string `gorm:"size:500;not null"`
 	Type     string `gorm:"size:16;not null"`
 
-	LiveSessionID int64  `gorm:"not null;idx_session_sent,priority:1"`
+	LiveSessionID int64  `gorm:"not null;index:idx_session_sent,priority:1"`
 	EventID       string `gorm:"size:64;uniqueIndex"`
 
 	SentAt int64 `gorm:"not null;index:idx_session_sent,priority:2"`

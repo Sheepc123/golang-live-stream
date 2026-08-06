@@ -2,13 +2,16 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/infra"
 	"github.com/Sheepc123/golang-live-stream/internal/live"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 // Manager handle the all websockets connection.
@@ -62,11 +65,17 @@ func NewManager(rdb *redis.Client, pd *infra.KafkaProducer) *Manager {
 }
 
 // TrackConn /UnTrackConn are called by WSHandler when a Websocket Connection is established or closed.
-func (m *Manager) TrackConn()   { m.connWg.Add(1) }
-func (m *Manager) UnTrackConn() { m.connWg.Done() }
+func (m *Manager) TrackConn() {
+	m.connWg.Add(1)
+	metrics.WSConnections.Inc()
+}
+func (m *Manager) UnTrackConn() {
+	m.connWg.Done()
+	metrics.WSConnections.Dec()
+}
 
-// deliver broadcasts a message toall clients in the given room
-// Sends are non-blocking: if a client's send is full, the message is dropped
+// deliver broadcasts a message to all clients in the given room.
+// Sends are non-blocking: if a client's send is full, the message is dropped.
 func (m *Manager) deliver(roomId int64, msg Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -76,14 +85,37 @@ func (m *Manager) deliver(roomId int64, msg Message) {
 		return
 	}
 
+	start := time.Now()
+	down := metrics.WSMessages.WithLabelValues("down", msg.Type)
+
+	// Count the number of broadcasting and dropped message.
+	var sent, dropped int
+
 	for client := range clients {
 		select {
 		case client.Send <- msg:
+			sent++
 		default:
-			log.Printf("Client %v is too slow, drop message in room %v", client.UserID, client.RoomID)
+			dropped++
 		}
 	}
+	if sent > 0 {
+		down.Add(float64(sent))
+	}
 
+	if dropped > 0 {
+		metrics.WSDropped.WithLabelValues("client_slow").Add(float64(dropped))
+
+		if logger.DebugEnabled() {
+			logger.L().Debug("slow clients dropped message",
+				zap.Int64("room_id", roomId),
+				zap.String("type", msg.Type),
+				zap.Int("dropped", dropped),
+				zap.Int("sent", sent),
+			)
+		}
+	}
+	metrics.BroadcastDuration.Observe(time.Since(start).Seconds())
 }
 
 // Register add a new client to the corresponding live stream room.
@@ -155,9 +187,14 @@ func (m *Manager) PersistMsg(msg Message) {
 	data, err := json.Marshal(msg)
 
 	if err != nil {
-		log.Printf("persist marshal fail (room=%d, user=%d): %v", msg.RoomID, msg.UserID, err)
+		logger.L().Error("persist marshal fail",
+			zap.Int64("room_id", msg.RoomID),
+			zap.Int64("user_id", msg.UserID),
+			zap.Error(err),
+		)
 		return
 	}
+
 	m.producer.Publish(strconv.FormatInt(msg.UserID, 10), data)
 
 }

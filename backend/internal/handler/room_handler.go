@@ -77,6 +77,7 @@ func (h *RoomHandler) ListMyRoom(c *gin.Context) {
 
 	if err != nil {
 		response.Error(c, err)
+		return
 	}
 
 	roomsRepose := make([]model.RoomResponse, 0, len(rooms))

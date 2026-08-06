@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	stdlog "log"
+	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
@@ -12,8 +13,12 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/infra"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 )
 
 // ChatEvent Read from Kafka struct
@@ -40,15 +45,22 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 	for msg := range claim.Messages() {
 		var ev ChatEvent
 		if err := json.Unmarshal(msg.Value, &ev); err != nil {
-			log.Printf("consumer unmarshal fail (offset=%d): %v", msg.Offset, err)
+			metrics.ConsumerMessages.WithLabelValues("unmarshal_error").Inc()
+			logger.L().Error("consumer unmarshal fail",
+				zap.Int32("partition", msg.Partition),
+				zap.Int64("offset", msg.Offset),
+				zap.Error(err),
+			)
 			session.MarkMessage(msg, "")
 			continue
 		}
 		sendAt := ev.Timestamp
 		if sendAt <= 0 {
 			sendAt = time.Now().UnixMilli()
-			log.Printf("consumer: missing timestamp, fallback to now (room=%d, offset=%d)",
-				ev.RoomID, msg.Offset)
+			logger.L().Warn("consumer missing timestamp, fallback to now",
+				zap.Int64("room_id", ev.RoomID),
+				zap.Int64("offset", msg.Offset),
+			)
 		}
 
 		entityMsg := &entity.Message{
@@ -61,11 +73,27 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 			LiveSessionID: ev.LiveSessionID,
 			SentAt:        sendAt,
 		}
+		start := time.Now()
+		err := h.msgRepo.CreateIfAbsent(session.Context(), entityMsg)
+		metrics.ConsumerWriteDuration.Observe(time.Since(start).Seconds())
 
-		if err := h.msgRepo.CreateIfAbsent(session.Context(), entityMsg); err != nil {
-			log.Printf("consumer write db fail (room=%d, offset=%d): %v", ev.RoomID, msg.Offset, err)
+		// Right now write msg to database one by one
+		metrics.ConsumerBatchSize.Observe(1)
+
+		if err != nil {
+			metrics.ConsumerMessages.WithLabelValues("write_error").Inc()
+			logger.L().Error("consumer write db fail",
+				zap.Int64("room_id", ev.RoomID),
+				zap.Int64("offset", msg.Offset),
+				zap.Error(err),
+			)
 			return err
+
 		}
+
+		metrics.ConsumerLag.Observe(float64(time.Now().UnixMilli()-sendAt) / 1000)
+		metrics.ConsumerMessages.WithLabelValues("ok").Inc()
+
 		session.MarkMessage(msg, "")
 	}
 	return nil
@@ -75,17 +103,31 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 func main() {
 	cfg, err := config.Load("configs/config.yaml")
 	if err != nil {
-		log.Fatalf("failed to load config : %v", err)
+		stdlog.Fatalf("failed to load config : %v", err)
 	}
+
+	if err := logger.Init(cfg.Log); err != nil {
+		stdlog.Fatalf("failed to init logger; %v", err)
+	}
+	defer logger.Sync()
 
 	db, err := infra.NewMySQL(cfg.MySQL)
 
 	if err != nil {
-		log.Fatalf("consumer failed to load Database : %v", err)
+		logger.L().Fatal("consumer failed to connect mysql", zap.Error(err))
 	}
 
-	log.Printf("consumer: mysql connected")
+	logger.L().Info("consumer: mysql connected")
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		if err := http.ListenAndServe(":9101", mux); err != nil {
+			logger.L().Error("consumer metrics server error", zap.Error(err))
+		}
+	}()
+	logger.L().Info("consumer metrics listening", zap.String("addr", ":9101"))
 
+	
 	msgRepo := repo.NewMesRep(db)
 
 	sc := sarama.NewConfig()
@@ -94,7 +136,7 @@ func main() {
 	group, err := sarama.NewConsumerGroup(cfg.Kafka.Brokers, cfg.Kafka.GroupId, sc)
 
 	if err != nil {
-		log.Fatalf("failed to create consumer group: %v", err)
+		logger.L().Fatal("failed to create consumer group", zap.Error(err))
 	}
 	defer group.Close()
 
@@ -103,12 +145,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	logger.L().Info("consumer started",
+		zap.Strings("brokers", cfg.Kafka.Brokers),
+		zap.String("topic", cfg.Kafka.Topic),
+		zap.String("group", cfg.Kafka.GroupId),
+	)
+
 	for {
 		if err := group.Consume(ctx, []string{cfg.Kafka.Topic}, handler); err != nil {
-			log.Printf("consumer error")
+			logger.L().Error("consumer group error", zap.Error(err))
 		}
 		if ctx.Err() != nil {
-			log.Printf("consumer shutdown signal received, exiting")
+			logger.L().Info("consumer shutdown signal received, exiting")
 			return
 		}
 	}

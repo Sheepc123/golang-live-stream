@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 const sessionTTL = 24 * time.Hour
@@ -69,7 +70,10 @@ func (s *SessionManager) CurrentID(ctx context.Context, roomId int64) int64 {
 	}
 
 	if err != nil {
-		log.Printf("read session id fail (room = %d) : %v", roomId, err)
+		logger.L().Error("read session id fail",
+			zap.Int64("room_id", roomId),
+			zap.Error(err),
+		)
 		return 0
 	}
 	return SessionId
@@ -96,7 +100,10 @@ func (s *SessionManager) Close(ctx context.Context, roomId int64) error {
 	}
 
 	if err := s.rdb.Del(ctx, sessionKey(roomId)).Err(); err != nil {
-		log.Printf("del session key fail (room = %d) : %v", roomId, err)
+		logger.L().Error("del session key fail",
+			zap.Int64("room_id", roomId),
+			zap.Error(err),
+		)
 	}
 
 	return nil
@@ -131,7 +138,11 @@ func (s *SessionManager) cacheID(ctx context.Context, roomId int64, SId int64) {
 	err := s.rdb.Set(ctx, sessionKey(roomId), SId, sessionTTL).Err()
 
 	if err != nil {
-		log.Printf("cache session fail (room = %d,session = %d): %v", roomId, SId, err)
+		logger.L().Error("cache session fail",
+			zap.Int64("room_id", roomId),
+			zap.Int64("session_id", SId),
+			zap.Error(err),
+		)
 	}
 }
 
@@ -139,7 +150,10 @@ func (s *SessionManager) GetLikeCount(ctx context.Context, roomId int64) int64 {
 	sId, err := s.ResolveID(ctx, roomId)
 
 	if err != nil {
-		log.Printf("resolve session for like count fail(room = %d):%v", roomId, err)
+		logger.L().Error("resolve session for like count fail",
+			zap.Int64("room_id", roomId),
+			zap.Error(err),
+		)
 		return 0
 	}
 	if sId == 0 {

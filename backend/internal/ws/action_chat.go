@@ -2,12 +2,13 @@ package ws
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/Sheepc123/golang-live-stream/internal/live"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"go.uber.org/zap"
 )
 
 const maxChatContentLength = 200
@@ -39,13 +40,20 @@ func (a *ChatAction) Execute(c *Client, m Message) {
 	cancel()
 
 	if err != nil {
-		log.Printf("resolve session for chat fail (room=%d): %v", c.RoomID, err)
+		logger.L().Error("resolve session for chat fail",
+			zap.Int64("room_id", c.RoomID),
+			zap.Error(err),
+		)
 		return
 	}
 
 	if sId == 0 {
 		// No session means this message could never be read back from history.
-		log.Printf("chat dropped, no active session (room=%d, user=%d)", c.RoomID, c.UserID)
+
+		logger.L().Debug("chat dropped, no active session",
+			zap.Int64("room_id", c.RoomID),
+			zap.Int64("user_id", c.UserID),
+		)
 		return
 	}
 

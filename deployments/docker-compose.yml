@@ -34,3 +34,40 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092   # 走容器网络,用服务名
     depends_on:
       - kafka
+
+  prometheus:
+      image: prom/prometheus:v3.1.0
+      container_name: live-prometheus
+      ports:
+        - "9090:9090"                  # web http://localhost:9090
+      volumes:
+        - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - prometheus-data:/prometheus   # TSDB 数据,不挂卷重启就丢历史
+      # host-gateway 让容器能解析到宿主机(WSL)的 IP,
+      # 这样才能抓到你用 go run 跑的 server / consumer。
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+      command:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.retention.time=15d'
+        # 开了它就能用 curl -X POST localhost:9090/-/reload 热加载配置,
+        # 调 scrape 目标时不用重启容器
+        - '--web.enable-lifecycle'
+
+  grafana:
+      image: grafana/grafana:11.5.0
+      container_name: live-grafana
+      ports:
+        - "3000:3000"                  # web http://localhost:3000
+      environment:
+        # ⚠️ 仅本地开发:免登录直接看图。别把这套配置带到任何对外环境。
+        GF_AUTH_ANONYMOUS_ENABLED: "true"
+        GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+        GF_SECURITY_ADMIN_PASSWORD: admin
+      volumes:
+        - grafana-data:/var/lib/grafana
+      depends_on:
+        - prometheus
+volumes:
+  prometheus-data:
+  grafana-data:

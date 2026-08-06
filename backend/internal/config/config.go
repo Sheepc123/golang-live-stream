@@ -26,6 +26,7 @@ type Config struct {
 	Redis  RedisConfig  `yaml:"redis"`
 	JWT    JWTConfig    `yaml:"jwt"`
 	Kafka  KafKaConfig  `yaml:"kafka"`
+	Log    LogConfig    `yaml:"log"`
 }
 
 // Server Config represents the setting for HTTP server.

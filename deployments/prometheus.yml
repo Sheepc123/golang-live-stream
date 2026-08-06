@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # ---- Gin 服务：WS 连接数、扇出计数、丢包、广播耗时、HTTP ----
+  - job_name: 'live-server'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+
+  # ---- Kafka Consumer：批大小、落库耗时、消费延迟 ----
+  # 这是独立进程，端口和 server 分开（见 cmd/consumer/main.go 里的 :9101）
+  - job_name: 'live-consumer'
+    static_configs:
+      - targets: ['host.docker.internal:9101']
+
+  # Prometheus 自己也暴露指标，抓上它方便排查「为什么没数据」
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

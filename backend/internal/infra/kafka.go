@@ -1,10 +1,11 @@
 package infra
 
 import (
-	"log"
-
 	"github.com/IBM/sarama"
 	"github.com/Sheepc123/golang-live-stream/internal/config"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
+	"go.uber.org/zap"
 )
 
 type KafkaProducer struct {
@@ -25,6 +26,8 @@ func NewKafkaProducer(cfg config.KafKaConfig) (*KafkaProducer, error) {
 
 	sc.Producer.Return.Errors = true
 
+	sc.Producer.Return.Successes = true
+
 	p, err := sarama.NewAsyncProducer(cfg.Brokers, sc)
 
 	if err != nil {
@@ -33,7 +36,14 @@ func NewKafkaProducer(cfg config.KafKaConfig) (*KafkaProducer, error) {
 
 	go func() {
 		for e := range p.Errors() {
-			log.Printf("failed to send message to Kafka : %v", e)
+			metrics.KafkaProduce.WithLabelValues("error").Inc()
+			logger.L().Error("kafka produce failed", zap.Error(e))
+		}
+	}()
+
+	go func() {
+		for range p.Successes() {
+			metrics.KafkaProduce.WithLabelValues("ok").Inc()
 		}
 	}()
 

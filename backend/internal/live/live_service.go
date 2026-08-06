@@ -3,10 +3,11 @@ package live
 import (
 	"context"
 	"errors"
-	"log"
 
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
+	"go.uber.org/zap"
 )
 
 // implement like_count
@@ -43,7 +44,8 @@ func (s *LiveService) LiveStart(ctx context.Context, roomId int64, OwnerId int64
 	}
 
 	if err := s.roomRepo.UpdateStatus(ctx, roomId, entity.RoomStatusLive); err != nil {
-		log.Printf("set room live fail (room=%d): %v", roomId, err)
+		logger.L().Error("set room live fail",
+			zap.Int64("room_id", roomId), zap.Error(err))
 	}
 	s.notifyLikeCount(ctx, roomId)
 	return SId, nil

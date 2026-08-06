@@ -1,6 +1,8 @@
 package router
 
 import (
+	"net/http"
+
 	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/handler"
@@ -12,6 +14,7 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/service"
 	"github.com/Sheepc123/golang-live-stream/internal/ws"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -24,7 +27,19 @@ func NewRouter(
 ) (*gin.Engine, *ws.Manager) {
 
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	r.Use(
+		middleware.Trace(),
+		middleware.Logger(),
+		middleware.Recovery(),
+		middleware.Metrics(),
+	)
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// 健康检查:K8s 的 liveness / readiness 探针会用
+	r.GET("/healthz", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
 
 	// repo initalize
 	userRepo := repo.NewUserRepo(db)

@@ -5,7 +5,9 @@ import (
 	"log"
 
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type Response struct {
@@ -27,7 +29,11 @@ func Error(c *gin.Context, err error) {
 	var ec errno.ErrorCode
 
 	if !errors.As(err, &ec) {
-		log.Printf("unclassified error on %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
+		logger.FromCtx(c.Request.Context()).Error("unclassified error",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.String("trace_id", c.GetString("trace_id")),
+			zap.Error(err))
 		ec = errno.InternalError
 	}
 

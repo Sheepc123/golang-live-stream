@@ -2,10 +2,11 @@ package ws
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/live"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"go.uber.org/zap"
 )
 
 type LikeAction struct {
@@ -29,12 +30,18 @@ func (a *LikeAction) Execute(c *Client, m Message) {
 	SId, err := a.sessionMgr.ResolveID(ctx, c.RoomID)
 
 	if err != nil {
-		log.Printf("resolve session for chat fail (room=%d): %v", c.RoomID, err)
+		logger.L().Error("resolve session for like fail",
+			zap.Int64("room_id", c.RoomID),
+			zap.Error(err),
+		)
 		return
 	}
 
 	if SId == 0 {
-		log.Printf("like dropped, no active session (room=%d, user=%d)", c.RoomID, c.UserID)
+		logger.L().Debug("like dropped, no active session",
+			zap.Int64("room_id", c.RoomID),
+			zap.Int64("user_id", c.UserID),
+		)
 		return
 	}
 

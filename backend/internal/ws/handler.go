@@ -10,10 +10,13 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/live"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	Jwttoken "github.com/Sheepc123/golang-live-stream/internal/token"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 var upgrader = websocket.Upgrader{
@@ -80,7 +83,6 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 	username := claims.Username
 	client := NewClient(roomId, userId, username, conn)
 
-
 	h.manager.TrackConn()
 	defer h.manager.UnTrackConn()
 
@@ -98,13 +100,23 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 		OnlineCountMsg := NewOnlineCountMessage(roomId, remaining)
 		h.manager.BroadcastToRoom(roomId, OnlineCountMsg)
 
-		log.Printf("User left room: room_id = %d, user_id = %d, username = %s", roomId, userId, username)
+		logger.L().Debug(
+			"user left room",
+			zap.Int64("room_id", roomId),
+			zap.Int64("user_id", userId),
+			zap.String("username", username),
+		)
 
 	}()
 	// Register Manager
 	h.manager.Register(client)
 
-	log.Printf("User join the live stream room: room_id = %d,user_id = %d,username = %v", roomId, userId, username)
+	logger.L().Debug(
+		"user joined room",
+		zap.Int64("room_id", roomId),
+		zap.Int64("user_id", userId),
+		zap.String("username", username),
+	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	onlineCount := h.SessionMgr.ViewerJoin(ctx, roomId, userId)
@@ -113,6 +125,8 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 
 	likeCountMsg := NewLikeMessageCount(roomId, currentLikeCount)
 	client.Send <- likeCountMsg
+
+	metrics.WSMessages.WithLabelValues("down", MessageTypeLikeCount).Inc()
 
 	// Broadcast join message
 	joinMsg := NewJoinMessage(userId, roomId, username)

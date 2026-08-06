@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	stdlog "log"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -11,7 +11,9 @@ import (
 
 	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/infra"
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/Sheepc123/golang-live-stream/internal/router"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -20,46 +22,56 @@ func main() {
 	// Config setting includes config.yaml and .env
 	cfg, err := config.Load("configs/config.yaml")
 	if err != nil {
-		log.Fatalf("failed to load config : %v", err)
+		stdlog.Fatalf("failed to load config : %v", err)
 	}
+
+	if err := logger.Init(cfg.Log); err != nil {
+		stdlog.Fatalf("failed to init logger: %v", err)
+	}
+	defer logger.Sync()
+
+	logger.L().Info("logger initialized",
+		zap.String("level", cfg.Log.Level),
+		zap.String("format", cfg.Log.Format),
+	)
 
 	// Mysql load
 	db, err := infra.NewMySQL(cfg.MySQL)
 
 	if err != nil {
-		log.Fatalf("failed to connect mysql : %v", err)
+		logger.L().Fatal("failed to connect mysql", zap.Error(err))
 	}
 
-	log.Printf("mysql connected")
+	logger.L().Info("mysql connected")
 
 	// AutoMigrate databse
 	if err := infra.AutoMigrate(db); err != nil {
-		log.Fatalf("failed to migrate %v", err)
+		logger.L().Fatal("failed to migrate database", zap.Error(err))
 	}
 
-	log.Printf("successfully migrate database")
+	logger.L().Info("database migrated")
 
 	// Seed generate inital database
 	if err := infra.Seed(db); err != nil {
-		log.Fatalf("failed to seed database : %v", err)
+		logger.L().Fatal("failed to seed database", zap.Error(err))
 	}
-	log.Printf("successfully seed database")
+	logger.L().Info("database seeded")
 
 	// Redis Load
 	rdb, err := infra.NewRedis(cfg.Redis)
 	if err != nil {
-		log.Fatalf("Failed to connect redis : %v", err)
+		logger.L().Fatal("failed to connect redis", zap.Error(err))
 	}
 
-	log.Printf("redis connected")
+	logger.L().Info("redis connected")
 
 	// New Kafka
 	producer, err := infra.NewKafkaProducer(cfg.Kafka)
 
 	if err != nil {
-		log.Fatalf("Failed to create Kafka Proudcer : %v ", err)
+		logger.L().Fatal("failed to create kafka producer", zap.Error(err))
 	}
-	log.Printf("Kafka producer ready")
+	logger.L().Info("kafka producer ready")
 
 	// NewRouter
 	r, wsManager := router.NewRouter(cfg, db, rdb, producer)
@@ -73,27 +85,27 @@ func main() {
 
 	defer stop() // 退出时解绑信号，恢复默认行为
 	go func() {
-		log.Printf("server listening on %s", srv.Addr)
+		logger.L().Info("server listening", zap.String("addr", srv.Addr))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("failed to start server : %v", err)
+			logger.L().Fatal("failed to start server", zap.Error(err))
 		}
 	}()
 
 	<-ctx.Done()
-	log.Printf("shutdown signal received, closing gracefully...")
-
+	logger.L().Info("shutdown signal received, closing gracefully")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("http server shutdown error: %v", err)
+		logger.L().Error("http server shutdown error", zap.Error(err))
 	}
 
 	wsManager.ShutDown()
 
 	if err := producer.Close(); err != nil {
-		log.Printf("kafka producer clsoe error %v", err)
+		logger.L().Error("kafka producer close error", zap.Error(err))
 	}
 
-	log.Printf("server exited cleanly")
+	logger.L().Info("server exited cleanly")
+
 }

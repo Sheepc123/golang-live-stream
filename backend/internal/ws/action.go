@@ -1,6 +1,10 @@
 package ws
 
-import "log"
+import (
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
+	"go.uber.org/zap"
+)
 
 // action dispatch different type msg
 type Action interface {
@@ -26,13 +30,22 @@ func (r *ActionRegistry) Register(msgType string, action Action) {
 }
 
 func (r *ActionRegistry) Dispatch(client *Client, msg Message) {
-	action,ok := r.action[msg.Type]
+	action, ok := r.action[msg.Type]
 
 	if !ok {
-		log.Printf("Error, no action registered for this message type : %v", msg.Type)
+
+		metrics.WSMessages.WithLabelValues("up", "unknown").Inc()
+
+		if logger.DebugEnabled() {
+			logger.L().Debug("no action registered for message type",
+				zap.String("type", msg.Type),
+				zap.Int64("user_id", client.UserID),
+				zap.Int64("room_id", client.RoomID))
+		}
 		return
 	}
 
-	action.Execute(client,msg)
-}
+	metrics.WSMessages.WithLabelValues("up", msg.Type).Inc()
 
+	action.Execute(client, msg)
+}

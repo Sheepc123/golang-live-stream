@@ -3,10 +3,11 @@ package live
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 const likeTTL = 24 * time.Hour
@@ -30,7 +31,9 @@ func (c *LikeCounter) Incr(ctx context.Context, SessionId int64) int64 {
 	total, err := c.rdb.Incr(ctx, LikeKey(SessionId)).Result()
 
 	if err != nil {
-		log.Printf("redis failed to incr (SessionId = %d): %v", SessionId, err)
+		logger.L().Error("redis incr like fail",
+			zap.Int64("session_id", SessionId), zap.Error(err),
+		)
 		return 0
 	}
 
@@ -46,7 +49,9 @@ func (c *LikeCounter) GetHistoryLike(ctx context.Context, SessionId int64) int64
 	}
 
 	if err != nil {
-		log.Printf("redis failed to get like count (SessionId = %d) : %v", SessionId, err)
+		logger.L().Error("redis get like count fail",
+			zap.Int64("session_id", SessionId), zap.Error(err),
+		)
 		return 0
 	}
 	return total

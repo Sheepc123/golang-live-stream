@@ -6,13 +6,13 @@ package live
 */
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"time"
 
-	"errors"
-
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 const onlineTTL = 24 * time.Hour
@@ -52,7 +52,9 @@ func (c *OnlineCounter) Join(ctx context.Context, roomId, userId int64) int64 {
 	).Int64()
 
 	if err != nil {
-		log.Printf("online join fail (room=%d, user=%d): %v", roomId, userId, err)
+		logger.L().Error("online join fail",
+			zap.Int64("room_id", roomId), zap.Int64("user_id", userId), zap.Error(err),
+		)
 		return 0
 	}
 	return n
@@ -79,7 +81,9 @@ func (c *OnlineCounter) Leave(ctx context.Context, roomId, userId int64) int64 {
 	).Int64()
 
 	if err != nil {
-		log.Printf("online leave fail (room=%d, user=%d): %v", roomId, userId, err)
+		logger.L().Error("online leave fail",
+			zap.Int64("room_id", roomId), zap.Int64("user_id", userId), zap.Error(err),
+		)
 		return 0
 	}
 	return n
@@ -89,7 +93,9 @@ func (c *OnlineCounter) Count(ctx context.Context, roomId int64) int64 {
 	n, err := c.rdb.HLen(ctx, ViewersKey(roomId)).Result()
 
 	if err != nil {
-		log.Printf("online count fail (room=%d): %v", roomId, err)
+		logger.L().Error("online count fail",
+			zap.Int64("room_id", roomId), zap.Error(err),
+		)
 		return 0
 	}
 	return n
@@ -118,7 +124,9 @@ func (c *OnlineCounter) UpdatePeak(ctx context.Context, sessionId, n int64) {
 	).Err()
 
 	if err != nil {
-		log.Printf("update peak fail (session=%d): %v", sessionId, err)
+		logger.L().Error("update peak fail",
+			zap.Int64("session_id", sessionId), zap.Error(err),
+		)
 	}
 }
 
@@ -129,7 +137,9 @@ func (c *OnlineCounter) Peak(ctx context.Context, sessionId int64) int64 {
 		return 0
 	}
 	if err != nil {
-		log.Printf("get peak fail (session=%d): %v", sessionId, err)
+		logger.L().Error("get peak fail",
+			zap.Int64("session_id", sessionId), zap.Error(err),
+		)
 		return 0
 	}
 	return n

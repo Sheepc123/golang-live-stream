@@ -1,8 +1,11 @@
 package ws
 
 import (
-	"log"
 	"sync"
+
+	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
+	"go.uber.org/zap"
 )
 
 // broadcastjob is the job for worker
@@ -47,7 +50,13 @@ func (p *BroadcastPool) runWoker(index int) {
 	defer p.wg.Done()
 
 	for job := range p.queues[index] {
-		log.Printf("worker #%d handle room %d (type=%s)", index, job.roomId, job.msg.Type)
+		if logger.DebugEnabled() {
+			logger.L().Debug("broadcast job",
+				zap.Int("worker", index),
+				zap.Int64("room_id", job.roomId),
+				zap.String("type", job.msg.Type),
+			)
+		}
 		p.deliver(job.roomId, job.msg)
 	}
 }
@@ -70,8 +79,15 @@ func (p *BroadcastPool) Submit(roomId int64, msg Message) {
 	select {
 	case p.queues[idx] <- job:
 	default:
-		log.Printf("broadcast pool queue #%d full, drop message for room %d (type=%s)",
-			idx, roomId, msg.Type)
+		metrics.WSDropped.WithLabelValues("queue_full").Inc()
+
+		if logger.DebugEnabled() {
+			logger.L().Debug("broadcast queue full, drop message",
+				zap.Int("queue", idx),
+				zap.Int64("room_id", roomId),
+				zap.String("type", msg.Type),
+			)
+		}
 	}
 }
 
