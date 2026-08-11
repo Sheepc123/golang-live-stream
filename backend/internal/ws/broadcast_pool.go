@@ -10,8 +10,9 @@ import (
 
 // broadcastjob is the job for worker
 type broadcastJob struct {
-	roomId int64
-	msg    Message
+	roomId  int64
+	msgType string
+	payload []byte
 }
 
 // Broadcastpool is a shared worker pool for room broadcasts.
@@ -23,12 +24,12 @@ type BroadcastPool struct {
 	queues []chan broadcastJob
 
 	// deliver func support by Manager
-	deliver func(roomId int64, msg Message)
+	deliver func(roomId int64, msgType string, payload []byte)
 
 	wg sync.WaitGroup
 }
 
-func NewBroadcastPool(workers int, deliver func(roomId int64, msg Message)) *BroadcastPool {
+func NewBroadcastPool(workers int, deliver func(roomId int64, msgType string, payload []byte)) *BroadcastPool {
 	if workers <= 0 {
 		workers = 1
 	}
@@ -54,10 +55,10 @@ func (p *BroadcastPool) runWoker(index int) {
 			logger.L().Debug("broadcast job",
 				zap.Int("worker", index),
 				zap.Int64("room_id", job.roomId),
-				zap.String("type", job.msg.Type),
+				zap.String("type", job.msgType),
 			)
 		}
-		p.deliver(job.roomId, job.msg)
+		p.deliver(job.roomId, job.msgType, job.payload)
 	}
 }
 
@@ -70,11 +71,12 @@ func (p *BroadcastPool) Start() {
 }
 
 // room submit the broadcast jobs to the queue
-func (p *BroadcastPool) Submit(roomId int64, msg Message) {
+func (p *BroadcastPool) Submit(roomId int64, msgType string, payload []byte) {
 	idx := int(roomId % int64(p.workers))
 	job := broadcastJob{
-		roomId: roomId,
-		msg:    msg,
+		roomId:  roomId,
+		msgType: msgType,
+		payload: payload,
 	}
 	select {
 	case p.queues[idx] <- job:
@@ -85,7 +87,7 @@ func (p *BroadcastPool) Submit(roomId int64, msg Message) {
 			logger.L().Debug("broadcast queue full, drop message",
 				zap.Int("queue", idx),
 				zap.Int64("room_id", roomId),
-				zap.String("type", msg.Type),
+				zap.String("type", msgType),
 			)
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/logger"
@@ -11,11 +13,34 @@ import (
 )
 
 // broadcastPattern "ws:room:*" can match ws:room:1,ws:room:2..... all room at once
-const broadcastPattern = "ws:room:*"
+const (
+	broadcastPattern = "ws:room:*"
+	broadcastPrefix  = "ws:room:"
+)
 
-// broadcastChannelString can return string "ws:room:roomId"
-func broadcastChannelString(roomId int64) string {
-	return fmt.Sprintf("ws:room:%d", roomId)
+// broadcastChannelString can return string "ws:room:roomId:msgType"
+func broadcastChannelString(roomId int64, msgType string) string {
+	return fmt.Sprintf("ws:room:%d:%s", roomId, msgType)
+}
+
+func getBroadcastChannel(channel string) (roomId int64, msgType string, ok bool) {
+	rest, found := strings.CutPrefix(channel, broadcastPrefix)
+
+	if !found {
+		return 0, "", false
+	}
+
+	idstr, msgType, found := strings.Cut(rest, ":")
+
+	if !found {
+		return 0, "", false
+	}
+
+	id, err := strconv.ParseInt(idstr, 10, 64)
+	if err != nil {
+		return 0, "", false
+	}
+	return id, msgType, true
 }
 
 // redis broadcast the marshaled data to all active subscribers.
@@ -33,7 +58,7 @@ func (m *Manager) publish(roomId int64, msg Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	if err := m.rdb.Publish(ctx, broadcastChannelString(roomId), data).Err(); err != nil {
+	if err := m.rdb.Publish(ctx, broadcastChannelString(roomId, msg.Type), data).Err(); err != nil {
 		logger.L().Error("redis publish fail",
 			zap.Int64("room_id", roomId),
 			zap.Error(err),
@@ -52,15 +77,14 @@ func (m *Manager) subscribeLoop() {
 	ch := m.pubsub.Channel()
 
 	for redisMsg := range ch {
-		var msg Message
-
-		if err := json.Unmarshal([]byte(redisMsg.Payload), &msg); err != nil {
-			logger.L().Error("redis payload unmarshal fail",
+		roomId, msgtype, ok := getBroadcastChannel(redisMsg.Channel)
+		if !ok {
+			logger.L().Error("unrecognized broadcast channel",
 				zap.String("channel", redisMsg.Channel),
-				zap.Error(err),
 			)
 			continue
+
 		}
-		m.pool.Submit(msg.RoomID, msg)
+		m.pool.Submit(roomId, msgtype, []byte(redisMsg.Payload))
 	}
 }

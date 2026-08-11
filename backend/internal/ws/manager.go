@@ -56,11 +56,21 @@ func (m *Manager) NotifyLikeCount(roomId int64, count int64) {
 // NewManager create new websocket Manager
 // Start the broadcast pool
 func NewManager(rdb *redis.Client, pd *infra.KafkaProducer) *Manager {
-	m := &Manager{rdb: rdb, producer: pd}
-	m.rooms = make(map[int64]map[*Client]bool)
-	m.pool = NewBroadcastPool(broadcastWokers, m.deliver)
+	m := newManager()
+	m.rdb = rdb
+	m.producer = pd
 	m.pool.Start()
 	m.startSubsrcibe()
+	return m
+}
+
+func newManager() *Manager {
+	m := &Manager{
+		rooms: make(map[int64]map[*Client]bool),
+	}
+	// pool 只创建不 Start —— 测试直接调 deliver,不需要 worker,
+	// 也就不会有 goroutine 泄漏到下一个测试里。
+	m.pool = NewBroadcastPool(broadcastWokers, m.deliver)
 	return m
 }
 
@@ -76,7 +86,7 @@ func (m *Manager) UnTrackConn() {
 
 // deliver broadcasts a message to all clients in the given room.
 // Sends are non-blocking: if a client's send is full, the message is dropped.
-func (m *Manager) deliver(roomId int64, msg Message) {
+func (m *Manager) deliver(roomId int64, msgType string, payload []byte) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -86,14 +96,14 @@ func (m *Manager) deliver(roomId int64, msg Message) {
 	}
 
 	start := time.Now()
-	down := metrics.WSMessages.WithLabelValues("down", msg.Type)
+	down := metrics.WSMessages.WithLabelValues("down", msgType)
 
 	// Count the number of broadcasting and dropped message.
 	var sent, dropped int
 
 	for client := range clients {
 		select {
-		case client.Send <- msg:
+		case client.Send <- payload:
 			sent++
 		default:
 			dropped++
@@ -109,7 +119,7 @@ func (m *Manager) deliver(roomId int64, msg Message) {
 		if logger.DebugEnabled() {
 			logger.L().Debug("slow clients dropped message",
 				zap.Int64("room_id", roomId),
-				zap.String("type", msg.Type),
+				zap.String("type", msgType),
 				zap.Int("dropped", dropped),
 				zap.Int("sent", sent),
 			)

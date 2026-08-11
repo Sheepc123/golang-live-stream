@@ -2,7 +2,6 @@ package ws
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/live"
 	"github.com/Sheepc123/golang-live-stream/internal/logger"
-	"github.com/Sheepc123/golang-live-stream/internal/metrics"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	Jwttoken "github.com/Sheepc123/golang-live-stream/internal/token"
 	"github.com/gin-gonic/gin"
@@ -75,7 +73,12 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("websocket upgrade fail: %v", err)
+		logger.L().Warn("websocket upgrade fail",
+			zap.Int64("room_id", roomId),
+			zap.Int64("user_id", claims.UserID),
+			zap.String("ip", c.ClientIP()),
+			zap.Error(err),
+		)
 		return
 	}
 
@@ -124,9 +127,7 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 	cancel()
 
 	likeCountMsg := NewLikeMessageCount(roomId, currentLikeCount)
-	client.Send <- likeCountMsg
-
-	metrics.WSMessages.WithLabelValues("down", MessageTypeLikeCount).Inc()
+	client.SendMsgOnlyOne(likeCountMsg)
 
 	// Broadcast join message
 	joinMsg := NewJoinMessage(userId, roomId, username)

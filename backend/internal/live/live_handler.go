@@ -1,12 +1,10 @@
 package live
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/ginx"
-	"github.com/Sheepc123/golang-live-stream/internal/repo"
 	"github.com/Sheepc123/golang-live-stream/internal/response"
 	"github.com/gin-gonic/gin"
 )
@@ -71,12 +69,5 @@ func parseOwnerAndRoom(c *gin.Context) (ownerId, roomId int64, ok bool) {
 }
 
 func WriteLiveError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, repo.ErrRoomNotFound):
-		response.Error(c, errno.RoomNotFound)
-	case errors.Is(err, repo.ErrRoomForbidden):
-		response.Error(c, errno.RoomForbidden)
-	default:
-		response.Error(c, errno.InternalError)
-	}
+	response.Error(c, err)
 }

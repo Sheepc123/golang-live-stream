@@ -2,7 +2,6 @@ package response
 
 import (
 	"errors"
-	"log"
 
 	"github.com/Sheepc123/golang-live-stream/internal/errno"
 	"github.com/Sheepc123/golang-live-stream/internal/logger"
@@ -32,7 +31,6 @@ func Error(c *gin.Context, err error) {
 		logger.FromCtx(c.Request.Context()).Error("unclassified error",
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),
-			zap.String("trace_id", c.GetString("trace_id")),
 			zap.Error(err))
 		ec = errno.InternalError
 	}
@@ -43,7 +41,10 @@ func Error(c *gin.Context, err error) {
 func ErrorWithData(c *gin.Context, err error, data any) {
 	var ec errno.ErrorCode
 	if !errors.As(err, &ec) {
-		log.Printf("unclassified error on %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
+		logger.FromCtx(c.Request.Context()).Error("unclassified error",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.Error(err))
 		ec = errno.InternalError
 	}
 	c.JSON(ec.Status, Response{Code: ec.Code, Msg: ec.Msg, Data: data})
