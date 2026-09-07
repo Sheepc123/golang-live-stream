@@ -74,7 +74,7 @@ func main() {
 	logger.L().Info("kafka producer ready")
 
 	// NewRouter
-	r, wsManager := router.NewRouter(cfg, db, rdb, producer)
+	r, wsManager, wsAggregator := router.NewRouter(cfg, db, rdb, producer)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,
@@ -100,6 +100,8 @@ func main() {
 		logger.L().Error("http server shutdown error", zap.Error(err))
 	}
 
+	wsAggregator.Stop()
+	
 	wsManager.ShutDown()
 
 	if err := producer.Close(); err != nil {

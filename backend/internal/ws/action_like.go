@@ -46,8 +46,5 @@ func (a *LikeAction) Execute(c *Client, m Message) {
 	}
 
 	// Increment the number of like and return the total number
-	total := a.likecounter.Incr(ctx, SId)
-	LikeCountmsg := NewLikeMessageCount(c.RoomID, total)
-	a.manager.BroadcastToRoom(c.RoomID, LikeCountmsg)
-
+	a.likecounter.Incr(ctx, SId)
 }

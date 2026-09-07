@@ -224,6 +224,16 @@ function createLocalMessage(type: 'system' | 'error', content: string): WSMessag
   }
 }
 
+// The server includes at most 20 names per list. Add the omitted users
+// to the listed names to display the total number of arrivals or departures.
+function formatRoomEventNames(names: string[], more: number, suffix: string) {
+  const head = names.join('、')
+  if (more > 0) {
+    return `${head} 等 ${names.length + more} 人${suffix}`
+  }
+  return `${head} ${suffix}`
+}
+
 function appendMessage(msg: WSMessage) {
   messages.value.push(msg)
 }
@@ -245,6 +255,25 @@ function handleSocketMessage(msg: WSMessage) {
   }
 
   if (msg.type === 'heartbeat') return
+
+  // The server batches joins and leaves once per second. Convert each batch
+  // into one system notice, matching the viewer page; notices do not fly
+  // across the video. Empty lists and zero overflow counts may be omitted.
+  if (msg.type === 'room_event') {
+    const parts: string[] = []
+
+    if (msg.joined?.length) {
+      parts.push(formatRoomEventNames(msg.joined, msg.joined_more ?? 0, '进入了直播间'))
+    }
+    if (msg.left?.length) {
+      parts.push(formatRoomEventNames(msg.left, msg.left_more ?? 0, '离开了直播间'))
+    }
+
+    if (parts.length) {
+      appendMessage(createLocalMessage('system', parts.join('；')))
+    }
+    return
+  }
 
   if (msg.type === 'chat') {
     danmakuScreenRef.value?.push(msg.content)

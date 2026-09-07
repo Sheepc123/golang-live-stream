@@ -24,7 +24,7 @@ func NewRouter(
 	db *gorm.DB,
 	rdb *redis.Client,
 	producer *infra.KafkaProducer,
-) (*gin.Engine, *ws.Manager) {
+) (*gin.Engine, *ws.Manager, *ws.Aggregator) {
 
 	r := gin.New()
 	r.Use(
@@ -83,6 +83,17 @@ func NewRouter(
 	wsReistry.Register(ws.MessageTypeLike, ws.NewLikeAction(wsManager, LikeCounter, SMgr))
 	wsHanlder := ws.NewWShandler(wsManager, cfg.JWT, wsReistry, SMgr)
 
+	// Aggregator  periodically publish like and online counts.
+	// It scans locally roomID and updates only when values change
+	//
+	// It reads RoomID only from the local pool，
+	// without publishing them through redis.
+	//
+	// In a multi-instance deployment, each instance reads the same global
+	// counters from Redis and pushes updates only to its own local connections.
+	aggregator := ws.NewAggregator(wsManager, SMgr)
+	aggregator.Start()
+
 	api := r.Group("/api/v1")
 	{
 		auth := api.Group("/auth")
@@ -127,5 +138,5 @@ func NewRouter(
 	r.NoRoute(func(c *gin.Context) {
 		response.Error(c, errno.RouteNotFound)
 	})
-	return r, wsManager
+	return r, wsManager, aggregator
 }

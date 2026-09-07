@@ -89,16 +89,21 @@ func (c *OnlineCounter) Leave(ctx context.Context, roomId, userId int64) int64 {
 	return n
 }
 
-func (c *OnlineCounter) Count(ctx context.Context, roomId int64) int64 {
+func (c *OnlineCounter) Count(ctx context.Context, roomId int64) (int64, error) {
 	n, err := c.rdb.HLen(ctx, ViewersKey(roomId)).Result()
+
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
 
 	if err != nil {
 		logger.L().Error("online count fail",
 			zap.Int64("room_id", roomId), zap.Error(err),
 		)
-		return 0
+		return 0, err
 	}
-	return n
+
+	return n, nil
 }
 
 var PeakScript = redis.NewScript(`
@@ -130,17 +135,17 @@ func (c *OnlineCounter) UpdatePeak(ctx context.Context, sessionId, n int64) {
 	}
 }
 
-func (c *OnlineCounter) Peak(ctx context.Context, sessionId int64) int64 {
+func (c *OnlineCounter) Peak(ctx context.Context, sessionId int64) (int64, error) {
 	n, err := c.rdb.Get(ctx, peakKey(sessionId)).Int64()
 
 	if errors.Is(err, redis.Nil) {
-		return 0
+		return 0, nil
 	}
 	if err != nil {
 		logger.L().Error("get peak fail",
 			zap.Int64("session_id", sessionId), zap.Error(err),
 		)
-		return 0
+		return 0, err
 	}
-	return n
+	return n, nil
 }

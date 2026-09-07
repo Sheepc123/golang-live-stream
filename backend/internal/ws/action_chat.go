@@ -54,6 +54,7 @@ func (a *ChatAction) Execute(c *Client, m Message) {
 			zap.Int64("room_id", c.RoomID),
 			zap.Int64("user_id", c.UserID),
 		)
+		c.SendMsgOnlyOne(NewErrorMessage(c.RoomID, "the live is offline, cannot send danmu"))
 		return
 	}
 

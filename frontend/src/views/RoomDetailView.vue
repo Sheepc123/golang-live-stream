@@ -199,6 +199,16 @@ function createLocalMessage(type: 'system' | 'error', content: string): WSMessag
   }
 }
 
+// 把名单拼成一句话。
+// 后端只带前 20 个名字，剩下的用 more 给数量 —— 拼接时要把两者加回去。
+function formatRoomEventNames(names: string[], more: number, suffix: string) {
+  const head = names.join('、')
+  if (more > 0) {
+    return `${head} 等 ${names.length + more} 人${suffix}`
+  }
+  return `${head} ${suffix}`
+}
+
 function appendMessage(msg: WSMessage) {
   messages.value.push(msg)
 }
@@ -221,6 +231,26 @@ function handleSocketMessage(msg: WSMessage) {
   }
 
   if (msg.type === 'heartbeat') return
+
+    // room_event 是每秒聚合一次的进出场名单，不是逐条通知。
+  // 后端这么改是因为逐条广播 join/leave 的扇出量是 O(进出人数 × 房间人数)，
+  // 6 万人涌入时会直接把下行打爆。
+  if (msg.type === 'room_event') {
+    const parts: string[] = []
+
+    if (msg.joined?.length) {
+      parts.push(formatRoomEventNames(msg.joined, msg.joined_more ?? 0, '进入了直播间'))
+    }
+    if (msg.left?.length) {
+      parts.push(formatRoomEventNames(msg.left, msg.left_more ?? 0, '离开了直播间'))
+    }
+
+    if (parts.length) {
+      appendMessage(createLocalMessage('system', parts.join('；')))
+    }
+    return
+  }
+
 
   // 只有聊天弹幕才飘屏，join/leave/system 等只进侧边栏列表，不飞过视频。
   if (msg.type === 'chat') {

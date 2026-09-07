@@ -9,6 +9,7 @@ export interface WSMessage {
     | 'like_count'
     | 'heartbeat'
     | 'online_count'
+    | 'room_event'
     | 'system'
     | 'error'
   room_id: number
@@ -16,6 +17,11 @@ export interface WSMessage {
   username: string
   content: string
   timestamp: number
+
+  joined?: string[]
+  left?: string[]
+  joined_more?: number
+  left_more?: number
 }
 
 // 前端只允许主动发送聊天和点赞消息。
@@ -159,6 +165,10 @@ export class LiveSocket {
     const token = getAccessToken()
     if (!token) return ''
     const params = new URLSearchParams({ token })
-    return `ws://localhost:8080/api/v1/ws/rooms/${this.options.roomID}?${params.toString()}`
+   // 用当前页面的 host 拼 WS 地址,而不是写死 localhost:8080。
+    // 开发时 vite 的 proxy 把 /api 转给后端,容器里 nginx 做同样的事 ——
+    // 前端代码不需要知道后端在哪,这是「配置外置」在前端的体现。
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${location.host}/api/v1/ws/rooms/${this.options.roomID}?${params.toString()}`
   }
 }

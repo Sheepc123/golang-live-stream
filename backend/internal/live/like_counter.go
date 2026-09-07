@@ -2,6 +2,7 @@ package live
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -42,17 +43,17 @@ func (c *LikeCounter) Incr(ctx context.Context, SessionId int64) int64 {
 }
 
 // GetHistoryLike returns the number of likes for the specified live Session
-func (c *LikeCounter) GetHistoryLike(ctx context.Context, SessionId int64) int64 {
+func (c *LikeCounter) GetHistoryLike(ctx context.Context, SessionId int64) (int64, error) {
 	total, err := c.rdb.Get(ctx, LikeKey(SessionId)).Int64()
-	if err == redis.Nil {
-		return 0
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
 	}
 
 	if err != nil {
 		logger.L().Error("redis get like count fail",
 			zap.Int64("session_id", SessionId), zap.Error(err),
 		)
-		return 0
+		return 0, err
 	}
-	return total
+	return total, nil
 }

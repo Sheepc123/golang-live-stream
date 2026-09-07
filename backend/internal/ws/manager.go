@@ -37,12 +37,13 @@ type Manager struct {
 	mu sync.RWMutex
 
 	// Broadcast pool
-	pool   *BroadcastPool
-	connWg sync.WaitGroup
-	rdb    *redis.Client
-	pubsub *redis.PubSub
-
+	pool     *BroadcastPool
+	connWg   sync.WaitGroup
+	rdb      *redis.Client
+	pubsub   *redis.PubSub
+	events   *roomEventBuffer
 	producer *infra.KafkaProducer
+	subDone  chan struct{}
 }
 
 const broadcastWokers = 8
@@ -66,7 +67,8 @@ func NewManager(rdb *redis.Client, pd *infra.KafkaProducer) *Manager {
 
 func newManager() *Manager {
 	m := &Manager{
-		rooms: make(map[int64]map[*Client]bool),
+		rooms:  make(map[int64]map[*Client]bool),
+		events: newRoomEventBuffer(),
 	}
 	// pool 只创建不 Start —— 测试直接调 deliver,不需要 worker,
 	// 也就不会有 goroutine 泄漏到下一个测试里。
@@ -187,6 +189,7 @@ func (m *Manager) ShutDown() {
 	m.connWg.Wait()
 	if m.pubsub != nil {
 		m.pubsub.Close()
+		<-m.subDone
 	}
 	m.pool.Stop()
 
@@ -206,5 +209,45 @@ func (m *Manager) PersistMsg(msg Message) {
 	}
 
 	m.producer.Publish(strconv.FormatInt(msg.UserID, 10), data)
+}
 
+// get the rooms which have at least one wbsocket connection.
+func (m *Manager) connectedRoomsIDs() []int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	roomIDs := make([]int64, 0, len(m.rooms))
+
+	for roomId := range m.rooms {
+		roomIDs = append(roomIDs, roomId)
+	}
+	return roomIDs
+}
+
+// broadcast the marshaled data to clients in specfied room without redis.
+// false
+func (m *Manager) submitbylocal(roomId int64, msg Message) bool {
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		logger.L().Error("aggregate marshal fail",
+			zap.Int64("room_id", roomId),
+			zap.String("type", msg.Type),
+			zap.Error(err),
+		)
+		return false
+	}
+
+	return m.pool.Submit(roomId, msg.Type, payload)
+}
+
+func (m *Manager) NoteJoin(roomId int64, username string) {
+	m.events.addJoin(roomId, username)
+}
+
+func (m *Manager) NoteLeave(roomId int64, username string) {
+	m.events.addLeave(roomId, username)
+}
+
+func (m *Manager) drainRoomEvents() map[int64]*roomEvents {
+	return m.events.drainAll()
 }

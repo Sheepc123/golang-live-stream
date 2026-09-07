@@ -69,13 +69,13 @@ func (m *Manager) publish(roomId int64, msg Message) {
 // startSubsriber start the pattern subscription and groutine continuously consumes
 func (m *Manager) startSubsrcibe() {
 	m.pubsub = m.rdb.PSubscribe(context.Background(), broadcastPattern)
-
+	m.subDone = make(chan struct{})
 	go m.subscribeLoop()
 }
 
 func (m *Manager) subscribeLoop() {
 	ch := m.pubsub.Channel()
-
+	defer close(m.subDone)
 	for redisMsg := range ch {
 		roomId, msgtype, ok := getBroadcastChannel(redisMsg.Channel)
 		if !ok {

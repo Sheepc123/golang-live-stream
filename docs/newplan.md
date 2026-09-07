@@ -110,6 +110,15 @@ III.5 Consumer 攒批落库（1-2 天）
  KAFKA_NUM_PARTITIONS: 3 → 8-12
 收益：10-30 倍
 
+III.5 补充待办：多 topic 消费的幂等键（接入多个 topic 共用消息表前完成）
+
+当前 consumer/main.go 使用 `partition-offset` 生成 EventID。不同 topic 的 partition 和 offset 可以相同，例如 topic A 和 topic B 的分区 0、offset 100 都得到 `0-100`。共用 messages 表时，event_id 唯一索引配合 DoNothing 会将后一条正常消息当成重复记录跳过，导致漏存。当前单 topic 场景不因这个原因冲突。
+
+- [ ] 调整幂等键：同一 Kafka 集群内使用 `topic-partition-offset`；也可保存 topic、partition、offset 三个字段并建立联合唯一索引。多个集群共用表时还需加入稳定的集群标识。
+- [ ] 配套检查字段长度和数据库索引：当前 EventID 为 `size:64`，加入 topic 后可能超长；按所选方案迁移真实表结构，不能只修改 Go 标签。
+- [ ] 设计历史数据兼容：旧记录只有 `partition-offset`，直接切换新格式会使旧消息重放时无法命中原记录。确认历史 topic 来源，制定旧键回填或兼容方案，再切换消费者；协调旧版本消费者退出，避免新旧键同时写入。
+- [ ] 验证：两个 topic 中相同 partition、offset 的消息都能落库；同一 topic 的同一条 Kafka 记录反复消费只保留一行；旧消息重放与新键切换不会新增重复记录。
+
 III.6 Kafka Producer 调优（10 分钟）
  kafka.go:19 WaitForAll → WaitForLocal（单 broker + 副本因子 1 场景，弹幕可容忍丢失）
  sc.Producer.Compression = sarama.CompressionLZ4 —— 纯文本压缩率极高，网络流量降 70%

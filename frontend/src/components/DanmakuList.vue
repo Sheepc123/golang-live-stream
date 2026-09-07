@@ -46,6 +46,8 @@ function formatMessageType(type: WSMessage['type']) {
     like_count: '赞数',
     heartbeat: '心跳',
     online_count: '人数',
+    // Keep the label map exhaustive as the WebSocket protocol grows.
+    room_event: '进出',
     system: '系统',
     error: '错误',
   }

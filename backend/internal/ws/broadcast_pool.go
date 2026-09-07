@@ -71,15 +71,18 @@ func (p *BroadcastPool) Start() {
 }
 
 // room submit the broadcast jobs to the queue
-func (p *BroadcastPool) Submit(roomId int64, msgType string, payload []byte) {
+// Returns false if the queue is full and the message is dropped.
+func (p *BroadcastPool) Submit(roomId int64, msgType string, payload []byte) bool {
 	idx := int(roomId % int64(p.workers))
 	job := broadcastJob{
 		roomId:  roomId,
 		msgType: msgType,
 		payload: payload,
 	}
+
 	select {
 	case p.queues[idx] <- job:
+		return true
 	default:
 		metrics.WSDropped.WithLabelValues("queue_full").Inc()
 
@@ -91,6 +94,7 @@ func (p *BroadcastPool) Submit(roomId int64, msgType string, payload []byte) {
 			)
 		}
 	}
+	return false
 }
 
 func (p *BroadcastPool) Stop() {

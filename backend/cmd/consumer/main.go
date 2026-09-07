@@ -21,6 +21,17 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// Flush when this partition has accumulated enough messages.
+	consumerBatchSize = 500
+
+	// Periodically flush smaller batches during low traffic.
+	consumerFlushInterval = 100 * time.Millisecond
+
+	// Bound each database write attempt.
+	consumerWriteTimeout = 3 * time.Second
+)
+
 // ChatEvent Read from Kafka struct
 type ChatEvent struct {
 	Type          string `json:"type"`
@@ -40,64 +51,163 @@ type consumerHandler struct {
 func (h *consumerHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
 func (h *consumerHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 
-func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
-	claim sarama.ConsumerGroupClaim) error {
-	for msg := range claim.Messages() {
-		var ev ChatEvent
-		if err := json.Unmarshal(msg.Value, &ev); err != nil {
-			metrics.ConsumerMessages.WithLabelValues("unmarshal_error").Inc()
-			logger.L().Error("consumer unmarshal fail",
-				zap.Int32("partition", msg.Partition),
-				zap.Int64("offset", msg.Offset),
-				zap.Error(err),
-			)
-			session.MarkMessage(msg, "")
-			continue
-		}
-		sendAt := ev.Timestamp
-		if sendAt <= 0 {
-			sendAt = time.Now().UnixMilli()
-			logger.L().Warn("consumer missing timestamp, fallback to now",
-				zap.Int64("room_id", ev.RoomID),
-				zap.Int64("offset", msg.Offset),
-			)
+
+func (h *consumerHandler) ConsumeClaim(
+	session sarama.ConsumerGroupSession,
+	claim sarama.ConsumerGroupClaim,
+) error {
+	ctx := session.Context()
+
+	// Each invocation belongs to one partition.
+	// Keep its batch local instead of sharing it through consumerHandler.
+	batch := make([]entity.Message, 0, consumerBatchSize)
+
+	// Track the last Kafka message represented by the current batch.
+	var lastMessage *sarama.ConsumerMessage
+
+	ticker := time.NewTicker(consumerFlushInterval)
+	defer ticker.Stop()
+
+	// This closure reads and updates the current invocation's batch.
+	// It runs synchronously in the consume loop.
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
 		}
 
-		entityMsg := &entity.Message{
-			EventID:       fmt.Sprintf("%d-%d", msg.Partition, msg.Offset),
-			RoomID:        ev.RoomID,
-			UserID:        ev.UserID,
-			Username:      ev.Username,
-			Content:       ev.Content,
-			Type:          ev.Type,
-			LiveSessionID: ev.LiveSessionID,
-			SentAt:        sendAt,
-		}
+		writeCtx, cancel := context.WithTimeout(
+			ctx,
+			consumerWriteTimeout,
+		)
+
 		start := time.Now()
-		err := h.msgRepo.CreateIfAbsent(session.Context(), entityMsg)
-		metrics.ConsumerWriteDuration.Observe(time.Since(start).Seconds())
+		err := h.msgRepo.CreateBatchIfAbsent(writeCtx, batch)
+		cancel()
 
-		// Right now write msg to database one by one
-		metrics.ConsumerBatchSize.Observe(1)
+		metrics.ConsumerWriteDuration.Observe(
+			time.Since(start).Seconds(),
+		)
 
 		if err != nil {
-			metrics.ConsumerMessages.WithLabelValues("write_error").Inc()
-			logger.L().Error("consumer write db fail",
-				zap.Int64("room_id", ev.RoomID),
-				zap.Int64("offset", msg.Offset),
+			metrics.ConsumerMessages.
+				WithLabelValues("write_error").
+				Add(float64(len(batch)))
+
+			logger.L().Error("consumer batch write failed",
+				zap.String("topic", claim.Topic()),
+				zap.Int32("partition", claim.Partition()),
+				zap.Int("batch_size", len(batch)),
 				zap.Error(err),
 			)
-			return err
 
+			// Leave the batch unmarked so it can be replayed.
+			return err
 		}
 
-		metrics.ConsumerLag.Observe(float64(time.Now().UnixMilli()-sendAt) / 1000)
-		metrics.ConsumerMessages.WithLabelValues("ok").Inc()
+		// All earlier messages in this partition's batch are now durable.
+		// Marking is not the same as immediately committing to Kafka.
+		session.MarkMessage(lastMessage, "")
 
-		session.MarkMessage(msg, "")
+		metrics.ConsumerBatchSize.Observe(float64(len(batch)))
+		metrics.ConsumerMessages.
+			WithLabelValues("ok").
+			Add(float64(len(batch)))
+
+		now := time.Now().UnixMilli()
+		for _, msg := range batch {
+			metrics.ConsumerLag.Observe(
+				float64(now-msg.SentAt) / 1000,
+			)
+		}
+
+		// Release references to message strings, then reuse the allocation.
+		clear(batch)
+		batch = batch[:0]
+		lastMessage = nil
+
+		return nil
 	}
-	return nil
 
+	for {
+		// Prefer exiting once this session has been cancelled.
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			// Do not start a new write with a cancelled session.
+			// Unmarked messages remain eligible for replay.
+			return nil
+
+		case <-ticker.C:
+			if err := flush(); err != nil {
+				return err
+			}
+
+		case msg, ok := <-claim.Messages():
+			if !ok {
+				if ctx.Err() != nil {
+					return nil
+				}
+
+				// Flush the final partial batch if the session is still active.
+				return flush()
+			}
+
+			var ev ChatEvent
+			if err := json.Unmarshal(msg.Value, &ev); err != nil {
+				metrics.ConsumerMessages.
+					WithLabelValues("unmarshal_error").
+					Inc()
+
+				logger.L().Error("consumer unmarshal failed",
+					zap.Int32("partition", msg.Partition),
+					zap.Int64("offset", msg.Offset),
+					zap.Error(err),
+				)
+
+				// Persist earlier valid messages before advancing past
+				// this malformed message.
+				if err := flush(); err != nil {
+					return err
+				}
+
+				// Preserve the existing policy: log and skip malformed JSON.
+				session.MarkMessage(msg, "")
+				continue
+			}
+
+			sentAt := ev.Timestamp
+			if sentAt <= 0 {
+				sentAt = time.Now().UnixMilli()
+
+				logger.L().Warn("consumer missing timestamp, fallback to now",
+					zap.Int64("room_id", ev.RoomID),
+					zap.Int64("offset", msg.Offset),
+				)
+			}
+
+			batch = append(batch, entity.Message{
+				EventID:       fmt.Sprintf("%d-%d", msg.Partition, msg.Offset),
+				RoomID:        ev.RoomID,
+				UserID:        ev.UserID,
+				Username:      ev.Username,
+				Content:       ev.Content,
+				Type:          ev.Type,
+				LiveSessionID: ev.LiveSessionID,
+				SentAt:        sentAt,
+			})
+
+			lastMessage = msg
+
+			if len(batch) >= consumerBatchSize {
+				if err := flush(); err != nil {
+					return err
+				}
+			}
+		}
+	}
 }
 
 func main() {
@@ -127,7 +237,6 @@ func main() {
 	}()
 	logger.L().Info("consumer metrics listening", zap.String("addr", ":9101"))
 
-	
 	msgRepo := repo.NewMesRep(db)
 
 	sc := sarama.NewConfig()

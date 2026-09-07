@@ -85,8 +85,8 @@ func seedRooms(db *gorm.DB) error {
 			CoverURL:    "https://picsum.photos/seed/music-live/640/360",
 			StreamURL:   "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
 			Description: "A relaxing music live channel.",
-			Status:      "live",
-			ViewerCount: 1280,
+			Status:      entity.RoomStatusStop,
+			ViewerCount: 0,
 		},
 		{
 			OwnerId:     owner.ID,
@@ -96,8 +96,8 @@ func seedRooms(db *gorm.DB) error {
 			CoverURL:    "https://picsum.photos/seed/game-arena/640/360",
 			StreamURL:   "https://test-streams.mux.dev/test_001/stream.m3u8",
 			Description: "Live gameplay and tournament highlights.",
-			Status:      "live",
-			ViewerCount: 3421,
+			Status:      entity.RoomStatusStop,
+			ViewerCount: 0,
 		},
 		{
 			OwnerId:     owner.ID,
@@ -107,8 +107,8 @@ func seedRooms(db *gorm.DB) error {
 			CoverURL:    "https://picsum.photos/seed/tech-talk/640/360",
 			StreamURL:   "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
 			Description: "Tech news, demos, and product talks.",
-			Status:      "live",
-			ViewerCount: 876,
+			Status:      entity.RoomStatusStop,
+			ViewerCount: 0,
 		},
 	}
 	for i := range rooms {

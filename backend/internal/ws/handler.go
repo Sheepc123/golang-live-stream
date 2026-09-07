@@ -93,15 +93,12 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 		h.manager.Unregister(client)
 		client.Close()
 
-		leaveMSg := NewLeaveMessage(userId, roomId, username)
-		h.manager.BroadcastToRoom(roomId, leaveMSg)
-
+		h.manager.NoteLeave(roomId,username)
+		
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		remaining := h.SessionMgr.ViewerLeave(ctx, roomId, userId)
+		
+		h.SessionMgr.ViewerLeave(ctx, roomId, userId)
 		cancel()
-
-		OnlineCountMsg := NewOnlineCountMessage(roomId, remaining)
-		h.manager.BroadcastToRoom(roomId, OnlineCountMsg)
 
 		logger.L().Debug(
 			"user left room",
@@ -122,20 +119,18 @@ func (h *WSHandler) HandleRoomWebSocket(c *gin.Context) {
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
 	onlineCount := h.SessionMgr.ViewerJoin(ctx, roomId, userId)
-	currentLikeCount := h.SessionMgr.GetLikeCount(ctx, roomId)
+
+	currentLikeCount, _ := h.SessionMgr.GetLikeCount(ctx, roomId)
 	cancel()
 
-	likeCountMsg := NewLikeMessageCount(roomId, currentLikeCount)
-	client.SendMsgOnlyOne(likeCountMsg)
+	client.SendMsgOnlyOne(NewLikeMessageCount(roomId, currentLikeCount))
+
+	client.SendMsgOnlyOne(NewOnlineCountMessage(roomId, onlineCount))
 
 	// Broadcast join message
-	joinMsg := NewJoinMessage(userId, roomId, username)
-	h.manager.BroadcastToRoom(joinMsg.RoomID, joinMsg)
-
-	// broadceast online count message
-	countMsg := NewOnlineCountMessage(roomId, onlineCount)
-	h.manager.BroadcastToRoom(countMsg.RoomID, countMsg)
+	h.manager.NoteJoin(roomId,username)
 
 	// starts a new goroutine to send message to the client
 	go client.WritePump()

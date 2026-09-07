@@ -79,5 +79,13 @@ func (s *LiveService) notifyLikeCount(ctx context.Context, roomId int64) {
 	if s.notifier == nil {
 		return
 	}
-	s.notifier.NotifyLikeCount(roomId, s.SMgr.GetLikeCount(ctx, roomId))
+	likecount, err := s.SMgr.GetLikeCount(ctx, roomId)
+
+	if err != nil {
+		logger.L().Error("notify like count fail",
+			zap.Int64("room_id", roomId), zap.Error(err))
+		return
+	}
+
+	s.notifier.NotifyLikeCount(roomId, likecount)
 }
