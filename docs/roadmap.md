@@ -8,7 +8,7 @@
 |---|---|---|
 | I 可观测性 | ✅ 完成 | zap / trace_id / Prometheus / GORM logger 全部落地 |
 | II Docker | ❌ 未开始 | compose 里只有 Kafka + Prometheus + Grafana，没有 MySQL / Redis / Dockerfile |
-| III 性能改造 | 🟡 80% | III.1–III.5、III.7 完成；III.6 分区键、III.8、III.9、III.10 部分未做 |
+| III 性能改造 | 🟡 90% | III.1–III.7、III.9、III.10 完成；III.8 暂缓（等火焰图）。分区键决定保留 UserID，见 1.1 |
 | IV 压测 | ❌ 未开始 | 实验 B / C 的开关刚接上 |
 | V 礼物系统 | ❌ 未开始 | |
 | VI 多实例 | ❌ 未开始 | 仍是 PSubscribe("ws:room:*") 通配订阅 |
@@ -43,14 +43,22 @@ go build ./... && go vet ./... && go test ./...
 
 ## 步骤 1：阶段 III 收尾（2–3 天）
 
-### 1.1 Kafka 分区键改 RoomID（10 分钟）
+### 1.1 Kafka 分区键：保留 UserID（已决定，不改）
 
-- [ ] `ws/sink.go` `KafkaSink.Persist`：`msg.UserID` → `msg.RoomID`
+**决定：分区键维持 `msg.UserID`，不改成 RoomID。**
+
+原因：
+
+- **热点风险**：按 RoomID 分区时，一个头部主播的房间会独占一个分区，其余分区闲置。Kafka 的并行度是按分区来的，consumer 也只能有一个 goroutine 消费那个分区，等于把最热的流量塞进了最窄的口子。UserID 是高基数键，哈希后天然均匀。
+- **顺序语义更贴合业务**：同一用户的弹幕在同一分区内有序，「我先发的 A 后发的 B」在落库时不会倒。跨用户的先后顺序本来就靠 `sent_at` 排序保证，不需要分区来做。
+- **落库局部性收益不确定**：RoomID 分区能让一批 500 条的 `room_id` 集中，理论上二级索引插入更友好，但这个收益没有数据支撑，不值得用热点风险去换。等步骤 3 的压测里 consumer 落库成为瓶颈时，再拿数据说话。
+
+待办：
+
+- [ ] `ws/sink.go` `KafkaSink.Persist`：确认 `Publish` 的 key 是 `strconv.FormatInt(msg.UserID, 10)`，并把注释改成上面这三条理由
 - [ ] `deployments/docker-compose.yml`：`KAFKA_NUM_PARTITIONS: 3` → `8`（已有的 danmu topic 分区数不会自动变，需要 `kafka-topics.sh --alter` 或删了重建）
 
-为什么现在可以改：sent_at 排序已落地，历史消息顺序不再依赖分区内顺序；按房间分区后 consumer 每批数据的 room_id 集中，InnoDB 二级索引写入局部性更好。
-
-验收：`kafka-ui` 里看 danmu topic，同一房间的消息落在同一分区。
+验收：`kafka-ui` 里看 danmu topic，8 个分区的消息量大致均匀；同一用户连发的弹幕落在同一分区。
 
 ### 1.2 限流与防护（1 天）⭐ 压测前必须有
 
@@ -269,7 +277,7 @@ sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 
 ```
 步骤 0 收口提交
-  → 1.1 分区键 → 1.2 限流 → 1.3 测试 → 1.4 小修
+  → 1.1 分区键(保留 UserID，只调分区数) → 1.2 限流 → 1.3 测试 → 1.4 小修
   → 步骤 2 Docker
   → 步骤 3 压测（产出 benchmark.md）
   → 视火焰图决定 III.8

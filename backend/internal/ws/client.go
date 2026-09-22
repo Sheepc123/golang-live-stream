@@ -57,14 +57,15 @@ type Client struct {
 }
 
 func NewClient(roomID int64, userId int64, username string, conn *websocket.Conn) *Client {
+	now := time.Now()
 	return &Client{
 		RoomID:      roomID,
 		UserID:      userId,
 		Conn:        conn,
 		Username:    username,
 		Send:        make(chan []byte, sendBuffer),
-		chatLimiter: newTokenBucket(chatRate, chatBurst),
-		likeLimiter: newTokenBucket(likeRate, likeBurst),
+		chatLimiter: newTokenBucket(chatRate, chatBurst, now),
+		likeLimiter: newTokenBucket(likeRate, likeBurst, now),
 	}
 }
 

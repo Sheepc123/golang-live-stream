@@ -75,7 +75,7 @@ func (k *KafkaSink) Persist(msg Message) {
 	// ⚠️ 单房间会成为分区热点(一个大主播独占一个分区)。
 	// 这是刻意接受的:弹幕的瓶颈在下行扇出,不在 Kafka 写入,
 	// 而落库的局部性收益是实打实的。
-	k.producer.Publish(strconv.FormatInt(msg.RoomID, 10), data)
+	k.producer.Publish(strconv.FormatInt(msg.UserID, 10), data)
 }
 
 // ---------- 实验 B 对照组:请求路径上同步写 MySQL ----------

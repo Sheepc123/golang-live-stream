@@ -13,7 +13,7 @@ var t0 = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // 桶初始是满的:用户刚连上就该能立刻发言,而不是先等着攒令牌。
 func TestTokenBucketStartsFull(t *testing.T) {
-	b := newTokenBucket(2, 5)
+	b := newTokenBucket(2, 5, t0)
 
 	for i := 0; i < 5; i++ {
 		if !b.allow(t0) {
@@ -25,9 +25,24 @@ func TestTokenBucketStartsFull(t *testing.T) {
 	}
 }
 
+func TestTokenBucketRefillUsesInjectedClock(t *testing.T) {
+	b := newTokenBucket(2, 5, t0)
+	for i := 0; i < 5; i++ {
+		b.allow(t0)
+	}
+	// 从 t0 起过 1 秒,应该正好补 2 个
+	later := t0.Add(time.Second)
+	if !b.allow(later) || !b.allow(later) {
+		t.Fatal("1 秒后应补充 2 个令牌")
+	}
+	if b.allow(later) {
+		t.Fatal("1 秒只该补 2 个,放行了第 3 个")
+	}
+}
+
 // 令牌按流逝的时间线性补充。
 func TestTokenBucketRefillsOverTime(t *testing.T) {
-	b := newTokenBucket(2, 5) // 每秒 2 个 = 每 500ms 一个
+	b := newTokenBucket(2, 5, t0) // 每秒 2 个 = 每 500ms 一个
 
 	for i := 0; i < 5; i++ {
 		b.allow(t0)
@@ -55,7 +70,7 @@ func TestTokenBucketRefillsOverTime(t *testing.T) {
 // 桶永远攒不满 —— 限流速率会静默地变成 0,用户一条都发不出去。
 // 而这种 bug 在「每秒调一次」的测试里完全看不出来。
 func TestTokenBucketAccumulatesFractionalTokens(t *testing.T) {
-	b := newTokenBucket(2, 5)
+	b := newTokenBucket(2, 5, t0)
 
 	for i := 0; i < 5; i++ {
 		b.allow(t0)
@@ -78,7 +93,7 @@ func TestTokenBucketAccumulatesFractionalTokens(t *testing.T) {
 
 // 攒令牌必须封顶。不封的话,挂机一小时回来能瞬间发几千条。
 func TestTokenBucketCapsAtBurst(t *testing.T) {
-	b := newTokenBucket(2, 5)
+	b := newTokenBucket(2, 5, t0)
 
 	// 空闲一小时,理论上能补 7200 个令牌
 	idle := t0.Add(time.Hour)
@@ -98,7 +113,7 @@ func TestTokenBucketCapsAtBurst(t *testing.T) {
 
 // 时间倒退(NTP 回拨之类)时不能凭空多发令牌,也不能死锁。
 func TestTokenBucketIgnoresBackwardsTime(t *testing.T) {
-	b := newTokenBucket(2, 5)
+	b := newTokenBucket(2, 5, t0)
 	for i := 0; i < 5; i++ {
 		b.allow(t0)
 	}

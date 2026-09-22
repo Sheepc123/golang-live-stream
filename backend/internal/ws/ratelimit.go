@@ -41,12 +41,12 @@ type tokenBucket struct {
 	burst float64 // 桶容量,决定能攒多少突发额度
 }
 
-func newTokenBucket(ratePerSec, burst float64) tokenBucket {
+func newTokenBucket(ratePerSec, burst float64, now time.Time) tokenBucket {
 	return tokenBucket{
 		// 初始给满:用户刚连上就该能立刻发言,
 		// 而不是先等半秒攒令牌 —— 那是个莫名其妙的首次体验。
 		tokens: burst,
-		last:   time.Now(),
+		last:   now,
 		rate:   ratePerSec,
 		burst:  burst,
 	}
