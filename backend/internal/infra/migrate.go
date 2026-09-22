@@ -86,7 +86,6 @@ func seedRooms(db *gorm.DB) error {
 			StreamURL:   "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
 			Description: "A relaxing music live channel.",
 			Status:      entity.RoomStatusStop,
-			ViewerCount: 0,
 		},
 		{
 			OwnerId:     owner.ID,
@@ -97,7 +96,6 @@ func seedRooms(db *gorm.DB) error {
 			StreamURL:   "https://test-streams.mux.dev/test_001/stream.m3u8",
 			Description: "Live gameplay and tournament highlights.",
 			Status:      entity.RoomStatusStop,
-			ViewerCount: 0,
 		},
 		{
 			OwnerId:     owner.ID,
@@ -108,7 +106,6 @@ func seedRooms(db *gorm.DB) error {
 			StreamURL:   "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
 			Description: "Tech news, demos, and product talks.",
 			Status:      entity.RoomStatusStop,
-			ViewerCount: 0,
 		},
 	}
 	for i := range rooms {

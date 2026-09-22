@@ -17,9 +17,7 @@ type Room struct {
 	StreamURL   string `gorm:"size:512"`
 	Description string `gorm:"size:512"`
 
-	Status      string `gorm:"size:16;default:offline"`
-	ViewerCount int64  `gorm:"default:0"`
-
+	Status    string    `gorm:"size:16;default:offline"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }

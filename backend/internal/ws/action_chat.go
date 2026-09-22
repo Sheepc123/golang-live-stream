@@ -8,6 +8,7 @@ import (
 
 	"github.com/Sheepc123/golang-live-stream/internal/live"
 	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +24,17 @@ func NewChatAction(m *Manager, sm *live.SessionManager) *ChatAction {
 }
 
 func (a *ChatAction) Execute(c *Client, m Message) {
+	// 限流放在最前面,早于内容校验。
+	//
+	// 为什么不等校验完再扣令牌:空内容的帧同样已经付过 ReadJSON +
+	// Dispatch 的代价。如果「空消息不扣令牌」,刷屏脚本只要发空帧
+	// 就能绕开整套限流 —— 把免费通道留给攻击者是没有意义的。
+	if !c.chatLimiter.allow(time.Now()) {
+		metrics.WSDropped.WithLabelValues("rate_limited").Inc()
+		c.SendMsgOnlyOne(NewErrorMessage(c.RoomID, "发送太快了,请稍后再试"))
+		return
+	}
+
 	content := strings.TrimSpace(m.Content)
 
 	if content == "" {

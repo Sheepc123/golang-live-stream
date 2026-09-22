@@ -1,31 +1,76 @@
+# ============================================================
+# 留空 + validate:"required" 的组合会让漏注入时启动直接失败 ——
+# 这是刻意的 fail fast:错误配置的代价不对称,
+#   启动失败 = 损失 2 分钟
+#   静默通过 = 上线被爆破,损失不可估量
+# 当代价不对称时,就要把失败挪到最早的时刻。
+#
+# ⚠️ 这个文件原来把「机密」和「默认值」拆成了两个区,
+#    结果 mysql / jwt / redis 三个顶层 key 各出现了两次。
+#    YAML 里重复的顶层 key 不会报错(goccy/go-yaml 默认不开 strict),
+#    而是**后面那一整块覆盖前面那一整块** —— 前半个文件被静默丢弃了。
+#
+#    当时没出事,纯属运气:被丢掉的值恰好都是空字符串,
+#    和「留空等 env 注入」的预期结果一样。
+#    但只要有人往上半区加一行 `user: "app"`,它就会人间蒸发,
+#    而文件顶部这段讲 fail fast 的注释会让人完全想不到这里。
+#
+#    现在改成「一个 key 只出现一次」,机密项用行内注释标注。
+# ============================================================
+
 server:
-  port: "8080" 
+  port: "8080"
+
+  # pprof 监听端口。空字符串 = 不启动。
+  # 必须和 8080 分开:pprof 会暴露 goroutine 栈和堆快照,不能对外。
+  pprof_port: "6060"
+
+  # cmd/consumer 的 /metrics 端口。server 进程不用它 ——
+  # server 的 /metrics 挂在 Gin 的 8080 上。
+  metrics_port: "9101"
+
+  # 全局 WebSocket 连接上限。0 = 不限。
+  #
+  # 默认不限是刻意的:这个值必须按机器实测来定。
+  # 填一个拍脑袋的数比不填更危险 —— 压测时会撞到自己设的假天花板,
+  # 却以为是机器到顶了。等阶段 IV 跑出真实拐点再填。
+  max_ws_conns: 0
+
+  # 单用户并发连接上限。0 = 不限。
+  # 防止一个账号建 1000 条连接。正常用户最多开几个标签页。
+  #
+  # ⚠️ 这是「单实例内」的限制。多实例部署时一个用户能在每个实例上
+  # 各开满 5 条,真正的全局限制要挪到 Redis(阶段 VI)。
+  max_conns_per_user: 5
 
 log:
   level: "info"      # 开发时可改 debug;生产必须 info 或以上
   format: "console"  # 开发用 console(彩色),生产用 json
 
-
 mysql:
   host: "127.0.0.1"
   port: "3306"
   user: "root"
-  password: "" # 占位，真实密码由环境变量 DB_PASSWORD 注入
+  password: ""       # ← 必须由 DB_PASSWORD 注入,不要在此填值
   db_name: "live_stream"
   charset: "utf8mb4"
   max_open_conns: 50
   max_idle_conns: 10
-  conn_max_lifetime: 3600 # 1 hour
-  log_level: "warn"  
+  conn_max_lifetime: 3600
+  log_level: "warn"
+
+  # 只有一个进程该做迁移。多实例部署时全部设 false,
+  # 由独立的一次性 migrate 任务负责(见阶段 II 的 docker-compose)。
+  auto_migrate: true
 
 jwt:
-  secret: "dev-secret" # 
-  expires_hours: 2 # access token 有效期（小时）
+  secret: ""         # ← 必须由 JWT_SECRET 注入。至少 32 字符:openssl rand -hex 32
+  expires_hours: 2
 
 redis:
   host: "127.0.0.1"
   port: "6379"
-  password: "" 
+  password: ""       # ← REDIS_PASSWORD(本地无密码时可留空)
   db: 0
 
 kafka:
@@ -33,3 +78,17 @@ kafka:
   - "localhost:9092"
   topic: "danmu"
   group_id: "danmu-db-writer"
+  # acks 取值:all / local / none。见 internal/infra/kafka.go 的说明。
+  # 默认 all —— 单 broker 下和 local 等价(ISR 只有 leader 自己),
+  # 但等哪天上 3 broker + RF=3,代码一行不改就自动获得强保证。
+  acks: "all"
+
+# 阶段 IV 对照实验用的「退化开关」。
+#
+# ⚠️ 命名刻意用 legacy_*,让「零值 = 生产行为」——
+# 配置漏写时系统走优化路径,而不是静默退化。
+# 如果反过来命名成 enable_aggregate: true,漏写就变成 false = 退化,
+# 那是一个会在半年后咬人的设计。
+experiment:
+  legacy_sync_db_write: false     # true = 弹幕绕过 Kafka,同步写 MySQL(实验 B 对照组)
+  legacy_instant_counters: false  # true = 点赞/进出场即时广播,不走聚合(实验 C 对照组)

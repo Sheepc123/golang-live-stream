@@ -123,7 +123,7 @@ III.6 Kafka Producer 调优（10 分钟）
  kafka.go:19 WaitForAll → WaitForLocal（单 broker + 副本因子 1 场景，弹幕可容忍丢失）
  sc.Producer.Compression = sarama.CompressionLZ4 —— 纯文本压缩率极高，网络流量降 70%
  sc.Producer.Flush.Frequency = 100 * time.Millisecond + Flush.Messages = 100
- 分区键从 UserID 改成 RoomID（sent_at 排序落地后，顺序不再依赖分区；按房间分区落库有局部性，批量写更友好）
+ 
 III.7 本地缓存 session_id（半天）
  SessionManager 加 sync.Map + 30s TTL，避免每条弹幕都 Redis GET
  Close() 时主动清除本地缓存

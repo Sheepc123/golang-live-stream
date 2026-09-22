@@ -23,7 +23,7 @@ func NewRoomHandler(r *service.RoomService) *RoomHandler {
 
 // List Room handles GET/api/v1/rooms
 func (h *RoomHandler) ListRoom(c *gin.Context) {
-	rooms, err := h.roomService.RoomList(c.Request.Context())
+	rooms, online, err := h.roomService.RoomList(c.Request.Context())
 
 	if err != nil {
 		response.Error(c, err)
@@ -33,7 +33,7 @@ func (h *RoomHandler) ListRoom(c *gin.Context) {
 	roomResponse := make([]model.RoomResponse, 0, len(rooms))
 
 	for i := range rooms {
-		roomResponse = append(roomResponse, model.NewRoomResponse(&rooms[i]))
+		roomResponse = append(roomResponse, model.NewRoomResponse(&rooms[i], online[rooms[i].ID]))
 	}
 
 	response.Ok(c, model.RoomListResponse{
@@ -53,14 +53,14 @@ func (h *RoomHandler) GetRoomByID(c *gin.Context) {
 		return
 	}
 
-	room, err := h.roomService.GetRoomByID(c.Request.Context(), id)
+	room, online, err := h.roomService.GetRoomByID(c.Request.Context(), id)
 
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Ok(c, model.NewRoomResponse(room))
+	response.Ok(c, model.NewRoomResponse(room, online))
 }
 
 // GETMineRoom handler GET /api/v1/rooms/mine
@@ -73,7 +73,7 @@ func (h *RoomHandler) ListMyRoom(c *gin.Context) {
 		return
 	}
 
-	rooms, err := h.roomService.ListMyRoom(c.Request.Context(), ownerId)
+	rooms, online, err := h.roomService.ListMyRoom(c.Request.Context(), ownerId)
 
 	if err != nil {
 		response.Error(c, err)
@@ -83,7 +83,7 @@ func (h *RoomHandler) ListMyRoom(c *gin.Context) {
 	roomsRepose := make([]model.RoomResponse, 0, len(rooms))
 
 	for i := range rooms {
-		roomsRepose = append(roomsRepose, model.NewRoomResponse(&rooms[i]))
+		roomsRepose = append(roomsRepose, model.NewRoomResponse(&rooms[i], online[rooms[i].ID]))
 	}
 	response.Ok(c, model.RoomListResponse{
 		Rooms: roomsRepose,
@@ -114,7 +114,7 @@ func (h *RoomHandler) CreatRoom(c *gin.Context) {
 		return
 	}
 
-	response.Ok(c, model.NewRoomResponse(room))
+	response.Ok(c, model.NewRoomResponse(room, 0))
 }
 
 // UpdateRoom handle PUT /api/v1/rooms/id
@@ -139,7 +139,7 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 		return
 	}
 
-	room, err := h.roomService.UpdateRoom(c.Request.Context(), ownerId, RoomId, &req)
+	room, online, err := h.roomService.UpdateRoom(c.Request.Context(), ownerId, RoomId, &req)
 
 	if err != nil {
 		// a. Room not found   404
@@ -150,7 +150,7 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 		return
 
 	}
-	response.Ok(c, model.NewRoomResponse(room))
+	response.Ok(c, model.NewRoomResponse(room, online))
 
 }
 

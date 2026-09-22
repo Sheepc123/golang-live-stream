@@ -11,7 +11,7 @@ type Message struct {
 	Type     string `gorm:"size:16;not null"`
 
 	LiveSessionID int64  `gorm:"not null;index:idx_session_sent,priority:1"`
-	EventID       string `gorm:"size:64;uniqueIndex"`
+	EventID       string `gorm:"size:128;uniqueIndex"`
 
 	SentAt int64 `gorm:"not null;index:idx_session_sent,priority:2"`
 	// autoCreateTime fill the time

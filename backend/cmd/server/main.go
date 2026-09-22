@@ -35,6 +35,10 @@ func main() {
 		zap.String("format", cfg.Log.Format),
 	)
 
+	// pprof 独立端口。空字符串 = 不启动。为什么不能挂在 8080 上,
+	// 见 infra/debug.go 顶部的注释。
+	infra.StartPprof(cfg.Server.PprofPort)
+
 	// Mysql load
 	db, err := infra.NewMySQL(cfg.MySQL)
 
@@ -45,17 +49,21 @@ func main() {
 	logger.L().Info("mysql connected")
 
 	// AutoMigrate databse
-	if err := infra.AutoMigrate(db); err != nil {
-		logger.L().Fatal("failed to migrate database", zap.Error(err))
-	}
+	if cfg.MySQL.AutoMigrate {
+		if err := infra.AutoMigrate(db); err != nil {
+			logger.L().Fatal("failed to migrate database", zap.Error(err))
+		}
 
-	logger.L().Info("database migrated")
+		logger.L().Info("database migrated")
 
-	// Seed generate inital database
-	if err := infra.Seed(db); err != nil {
-		logger.L().Fatal("failed to seed database", zap.Error(err))
+		// Seed generate inital database
+		if err := infra.Seed(db); err != nil {
+			logger.L().Fatal("failed to seed database", zap.Error(err))
+		}
+		logger.L().Info("database seeded")
+	} else {
+		logger.L().Info("auto migrate disabled, skipping migration and seed")
 	}
-	logger.L().Info("database seeded")
 
 	// Redis Load
 	rdb, err := infra.NewRedis(cfg.Redis)
@@ -101,7 +109,7 @@ func main() {
 	}
 
 	wsAggregator.Stop()
-	
+
 	wsManager.ShutDown()
 
 	if err := producer.Close(); err != nil {

@@ -2,11 +2,11 @@ package ws
 
 import (
 	"encoding/json"
-	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/Sheepc123/golang-live-stream/internal/infra"
+	"github.com/Sheepc123/golang-live-stream/internal/config"
 	"github.com/Sheepc123/golang-live-stream/internal/live"
 	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/Sheepc123/golang-live-stream/internal/metrics"
@@ -37,13 +37,38 @@ type Manager struct {
 	mu sync.RWMutex
 
 	// Broadcast pool
-	pool     *BroadcastPool
-	connWg   sync.WaitGroup
-	rdb      *redis.Client
-	pubsub   *redis.PubSub
-	events   *roomEventBuffer
-	producer *infra.KafkaProducer
-	subDone  chan struct{}
+	pool    *BroadcastPool
+	connWg  sync.WaitGroup
+	rdb     *redis.Client
+	pubsub  *redis.PubSub
+	events  *roomEventBuffer
+	sink    MsgSink
+	subDone chan struct{}
+
+	// ---------- 连接额度 ----------
+	//
+	// 这三组状态刻意不复用上面那把 mu。
+	//
+	// mu 保护的是 rooms,而 rooms 在 deliver 里被每一次广播读取 ——
+	// 那是全项目最热的锁。握手/断开是另一条频率完全不同的路径,
+	// 把它塞进同一把锁,一次连接风暴就会直接拖慢所有房间的广播。
+	// 「按访问模式分锁」,不是按数据所属的结构体分锁。
+
+	// maxConns 全局连接上限,0 = 不限。创建后只读,不需要同步。
+	maxConns int64
+
+	// curConns 当前占用的额度。用 atomic 而不是 mutex:
+	// 它只需要一个「检查并加一」的原子操作,上不上锁的语义是一样的,
+	// 但 atomic 在高并发握手下没有阻塞和唤醒的开销。
+	curConns atomic.Int64
+
+	// maxConnsPerUser 单用户并发连接上限,0 = 不限。创建后只读。
+	maxConnsPerUser int
+
+	// userConns 每个用户当前的连接数,受 muUser 保护。
+	// 这里没法用 atomic —— 「读 map、比较、改 map」三步不是一个原子操作。
+	muUser    sync.Mutex
+	userConns map[int64]int
 }
 
 const broadcastWokers = 8
@@ -56,10 +81,12 @@ func (m *Manager) NotifyLikeCount(roomId int64, count int64) {
 
 // NewManager create new websocket Manager
 // Start the broadcast pool
-func NewManager(rdb *redis.Client, pd *infra.KafkaProducer) *Manager {
+func NewManager(rdb *redis.Client, sink MsgSink, srv config.ServerConfig) *Manager {
 	m := newManager()
 	m.rdb = rdb
-	m.producer = pd
+	m.sink = sink
+	m.maxConns = int64(srv.MaxWSConns)
+	m.maxConnsPerUser = srv.MaxConnsPerUser
 	m.pool.Start()
 	m.startSubsrcibe()
 	return m
@@ -67,8 +94,9 @@ func NewManager(rdb *redis.Client, pd *infra.KafkaProducer) *Manager {
 
 func newManager() *Manager {
 	m := &Manager{
-		rooms:  make(map[int64]map[*Client]bool),
-		events: newRoomEventBuffer(),
+		rooms:     make(map[int64]map[*Client]bool),
+		events:    newRoomEventBuffer(),
+		userConns: make(map[int64]int),
 	}
 	// pool 只创建不 Start —— 测试直接调 deliver,不需要 worker,
 	// 也就不会有 goroutine 泄漏到下一个测试里。
@@ -76,14 +104,108 @@ func newManager() *Manager {
 	return m
 }
 
-// TrackConn /UnTrackConn are called by WSHandler when a Websocket Connection is established or closed.
-func (m *Manager) TrackConn() {
+// TryAcquireSlot 申请一份连接额度。返回 false 表示额度用尽,
+// 调用方必须直接返回错误,不要继续 Upgrade。
+//
+// ── 为什么必须在 Upgrade 之前 ──
+//
+// 握手之后再断开,代价高得多:
+//   - 已经走完了 HTTP 响应 + 协议切换
+//   - 已经起了 ReadPump / WritePump 两个 goroutine(各 8 KB 起步的栈)
+//   - 已经往 Redis 写过一次 viewers,还得再写一次减回去
+//   - 已经进了 rooms map,广播路径要多遍历它一次
+//
+// 更关键的是:连接数上限的意义就是在过载时保护自己。
+// 如果拒绝一条连接本身要付出接受它八成的代价,这个保护就是假的。
+//
+// 成功后必须配对调用 ReleaseSlot,否则额度永久泄漏。
+func (m *Manager) TryAcquireSlot(userID int64) bool {
+	if !m.acquireGlobal() {
+		metrics.WSRejected.WithLabelValues("global_limit").Inc()
+		return false
+	}
+
+	if !m.acquireUser(userID) {
+		// 全局额度已经占上了,这里必须还回去。
+		// 两段式申请里最容易漏的就是中途失败的回滚。
+		m.releaseGlobal()
+		metrics.WSRejected.WithLabelValues("user_limit").Inc()
+		return false
+	}
+
 	m.connWg.Add(1)
 	metrics.WSConnections.Inc()
+	return true
 }
-func (m *Manager) UnTrackConn() {
+
+// ReleaseSlot 归还额度。必须和一次成功的 TryAcquireSlot 成对出现。
+func (m *Manager) ReleaseSlot(userID int64) {
+	m.releaseUser(userID)
+	m.releaseGlobal()
 	m.connWg.Done()
 	metrics.WSConnections.Dec()
+}
+
+func (m *Manager) acquireGlobal() bool {
+	if m.maxConns <= 0 {
+		m.curConns.Add(1)
+		return true
+	}
+
+	// CAS 循环,而不是「先 Add 再判断、超了再 Add(-1)」。
+	//
+	// 后者在并发下会短暂突破上限:1000 条握手同时 Add,
+	// 计数会先冲到 1000 才各自回退。上限设成 6 万时,
+	// 那个「短暂」足够真的把内存打爆 —— 保护措施不能有超调窗口。
+	for {
+		cur := m.curConns.Load()
+		if cur >= m.maxConns {
+			return false
+		}
+		if m.curConns.CompareAndSwap(cur, cur+1) {
+			return true
+		}
+		// CAS 失败 = 别人抢先改了,重新读一次再试。
+	}
+}
+
+func (m *Manager) releaseGlobal() {
+	m.curConns.Add(-1)
+}
+
+func (m *Manager) acquireUser(userID int64) bool {
+	if m.maxConnsPerUser <= 0 {
+		return true
+	}
+
+	m.muUser.Lock()
+	defer m.muUser.Unlock()
+
+	if m.userConns[userID] >= m.maxConnsPerUser {
+		return false
+	}
+	m.userConns[userID]++
+	return true
+}
+
+func (m *Manager) releaseUser(userID int64) {
+	if m.maxConnsPerUser <= 0 {
+		return
+	}
+
+	m.muUser.Lock()
+	defer m.muUser.Unlock()
+
+	n := m.userConns[userID] - 1
+	if n <= 0 {
+		// 归零必须删 key,不能留一个 0 在里面。
+		// 否则这个 map 会随「历史上登录过的用户数」无限增长 ——
+		// 这是长期运行的进程里最典型的一类内存泄漏:
+		// 每个条目都很小,但永远不会被回收。
+		delete(m.userConns, userID)
+		return
+	}
+	m.userConns[userID] = n
 }
 
 // deliver broadcasts a message to all clients in the given room.
@@ -197,18 +319,7 @@ func (m *Manager) ShutDown() {
 
 // Asynchronously persist message through Kafka.
 func (m *Manager) PersistMsg(msg Message) {
-	data, err := json.Marshal(msg)
-
-	if err != nil {
-		logger.L().Error("persist marshal fail",
-			zap.Int64("room_id", msg.RoomID),
-			zap.Int64("user_id", msg.UserID),
-			zap.Error(err),
-		)
-		return
-	}
-
-	m.producer.Publish(strconv.FormatInt(msg.UserID, 10), data)
+	m.sink.Persist(msg)
 }
 
 // get the rooms which have at least one wbsocket connection.

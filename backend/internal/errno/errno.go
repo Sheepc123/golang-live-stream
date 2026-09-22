@@ -61,4 +61,12 @@ var (
 // ===== 6xxxx: message / websocket =====
 var (
 	MessageTooLong = newCode(60001, "message too long", http.StatusBadRequest)
+
+	// TooManyConnections 连接额度用尽(全局上限或单用户上限)。
+	//
+	// 用 503 而不是 429:429 的语义是「你发太快了,等会再来」,
+	// 而这里是「服务器满了」,和单个客户端的行为不一定有关。
+	// 503 还会让前端的指数退避重连逻辑自然生效 —— 这正是我们想要的:
+	// 让被拒的客户端分散着回来,而不是一起冲。
+	TooManyConnections = newCode(60002, "too many connections", http.StatusServiceUnavailable)
 )

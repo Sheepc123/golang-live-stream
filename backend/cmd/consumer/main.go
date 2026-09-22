@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	stdlog "log"
+	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -17,6 +21,7 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/metrics"
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
+	drivermysql "github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
@@ -30,6 +35,12 @@ const (
 
 	// Bound each database write attempt.
 	consumerWriteTimeout = 3 * time.Second
+
+	// Include the initial write: at most two retries after the first attempt.
+	consumerWriteMaxAttempts = 3
+
+	// Wait 200ms before the second attempt and 400ms before the third.
+	consumerRetryBaseDelay = 200 * time.Millisecond
 )
 
 // ChatEvent Read from Kafka struct
@@ -51,6 +62,89 @@ type consumerHandler struct {
 func (h *consumerHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
 func (h *consumerHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 
+// Retry recognized connection, timeout, and lock errors. Unknown errors and
+// invalid data fail immediately; retrying cannot repair a malformed record.
+func isRetryableWriteError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, driver.ErrBadConn) ||
+		errors.Is(err, drivermysql.ErrInvalidConn) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	var mysqlErr *drivermysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		switch mysqlErr.Number {
+		case 1205, 1213:
+			// Lock wait timeout or deadlock: retry the repository transaction.
+			return true
+		default:
+			return false
+		}
+	}
+
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
+// Keep the same batch until a write succeeds or retries are exhausted.
+// Kafka progress remains the caller's responsibility after confirmed success.
+func (h *consumerHandler) writeBatchWithRetry(ctx context.Context, batch []entity.Message) error {
+	if len(batch) == 0 {
+		return nil
+	}
+
+	var lastErr error
+	delay := consumerRetryBaseDelay
+	for attempt := 1; attempt <= consumerWriteMaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		// Never reuse an expired attempt context. Every write still belongs
+		// to the session, so cancellation interrupts in-flight database work.
+		writeCtx, cancel := context.WithTimeout(ctx, consumerWriteTimeout)
+		start := time.Now()
+		lastErr = h.msgRepo.CreateBatchIfAbsent(writeCtx, batch)
+		cancel()
+		// Observe individual database attempts, excluding backoff time.
+		metrics.ConsumerWriteDuration.Observe(time.Since(start).Seconds())
+		if lastErr == nil {
+			return nil
+		}
+
+		// Session cancellation takes precedence over retryable write errors.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !isRetryableWriteError(lastErr) || attempt == consumerWriteMaxAttempts {
+			return lastErr
+		}
+
+		logger.L().Warn("consumer batch write retry scheduled",
+			zap.Int("attempt", attempt),
+			zap.Int("max_attempts", consumerWriteMaxAttempts),
+			zap.Int("batch_size", len(batch)),
+			zap.Duration("retry_delay", delay),
+			zap.Error(lastErr),
+		)
+
+		// A cancellable timer allows the claim to exit during a rebalance.
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+			timer.Stop()
+		}
+		delay *= 2
+	}
+	return lastErr
+}
 
 func (h *consumerHandler) ConsumeClaim(
 	session sarama.ConsumerGroupSession,
@@ -75,18 +169,7 @@ func (h *consumerHandler) ConsumeClaim(
 			return nil
 		}
 
-		writeCtx, cancel := context.WithTimeout(
-			ctx,
-			consumerWriteTimeout,
-		)
-
-		start := time.Now()
-		err := h.msgRepo.CreateBatchIfAbsent(writeCtx, batch)
-		cancel()
-
-		metrics.ConsumerWriteDuration.Observe(
-			time.Since(start).Seconds(),
-		)
+		err := h.writeBatchWithRetry(ctx, batch)
 
 		if err != nil {
 			metrics.ConsumerMessages.
@@ -189,7 +272,7 @@ func (h *consumerHandler) ConsumeClaim(
 			}
 
 			batch = append(batch, entity.Message{
-				EventID:       fmt.Sprintf("%d-%d", msg.Partition, msg.Offset),
+				EventID:       fmt.Sprintf("%s-%d-%d", msg.Topic, msg.Partition, msg.Offset),
 				RoomID:        ev.RoomID,
 				UserID:        ev.UserID,
 				Username:      ev.Username,
@@ -228,14 +311,29 @@ func main() {
 	}
 
 	logger.L().Info("consumer: mysql connected")
+
+	// 端口从配置来,不再硬编码。consumer 和 server 是两个进程,
+	// 容器化之后它们各自的 metrics 端口必须能独立注入
+	// (prometheus.yml 里要按服务名 + 端口分别配 scrape target)。
+	metricsAddr := ":" + cfg.Server.MetricsPort
 	go func() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
-		if err := http.ListenAndServe(":9101", mux); err != nil {
+		srv := &http.Server{
+			Addr:    metricsAddr,
+			Handler: mux,
+			// 不用 http.ListenAndServe 的裸默认值:没有超时的 Server
+			// 会被慢速请求一直占着连接。这个端口只给 Prometheus 抓,
+			// 但它同样暴露在内网里。
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      30 * time.Second,
+		}
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.L().Error("consumer metrics server error", zap.Error(err))
 		}
 	}()
-	logger.L().Info("consumer metrics listening", zap.String("addr", ":9101"))
+	logger.L().Info("consumer metrics listening", zap.String("addr", metricsAddr))
 
 	msgRepo := repo.NewMesRep(db)
 

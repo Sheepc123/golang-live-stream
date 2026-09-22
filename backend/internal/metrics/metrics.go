@@ -50,6 +50,22 @@ var (
 		Help:      "Total messages dropped by reason",
 	}, []string{"reason"})
 
+	// WSRejected 在 Upgrade 之前被拒绝的握手数。
+	//
+	//	reason=global_limit  全局连接数已达 server.max_ws_conns
+	//	reason=user_limit    该用户并发连接数已达 server.max_conns_per_user
+	//
+	// 和 WSDropped 分开是因为两者的含义完全不同:
+	// dropped 是「连上了但这条消息没送到」,rejected 是「根本没让你连」。
+	// 压测时这条曲线开始上扬,说明已经撞到人为设的天花板,
+	// 而不是撞到机器的极限 —— 分不清这两者,容量数据就是废的。
+	WSRejected = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "ws",
+		Name:      "rejected_total",
+		Help:      "Total WebSocket handshakes rejected before upgrade, by reason",
+	}, []string{"reason"})
+
 	// BroadcastDuration 单次房间广播(deliver)的耗时分布。
 	//
 	// Bucket 刻意设得很小:纯内存操作应该在微秒级。
@@ -122,6 +138,22 @@ var (
 		Name:      "messages_total",
 		Help:      "Total consumed messages by result",
 	}, []string{"result"})
+)
+
+// ============ 实验 B:同步写库 ============
+
+var (
+	// SyncDBWriteDuration 请求路径上单条 INSERT 的耗时。
+	//
+	// 和 ConsumerWriteDuration 放在一起看就是实验 B 的结论:
+	// 同步写每条都付一次事务成本;攒批写 500 条付一次。
+	SyncDBWriteDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: namespace,
+		Subsystem: "sync_db",
+		Name:      "write_duration_seconds",
+		Help:      "Duration of one synchronous chat INSERT on the WS request path",
+		Buckets:   prometheus.DefBuckets,
+	})
 )
 
 // ============ HTTP ============

@@ -14,9 +14,6 @@ const messageInsertBatchSize = 500
 
 type MsgRepo interface {
 	ListBySessionID(ctx context.Context, roomId, sessionId int64, limit int) ([]entity.Message, error)
-	Create(ctx context.Context, msg *entity.Message) error
-	CreateIfAbsent(ctx context.Context, msg *entity.Message) error
-
 	CreateBatchIfAbsent(ctx context.Context, msgs []entity.Message) error
 }
 
@@ -42,17 +39,7 @@ func (r *msgRepo) ListBySessionID(ctx context.Context, roomId, sessionId int64, 
 
 }
 
-func (r *msgRepo) Create(ctx context.Context, msg *entity.Message) error {
-	return r.db.WithContext(ctx).Create(msg).Error
-}
 
-func (r *msgRepo) CreateIfAbsent(ctx context.Context, msg *entity.Message) error {
-	return r.db.WithContext(ctx).Clauses(
-		clause.OnConflict{
-			Columns:   []clause.Column{{Name: "event_id"}},
-			DoNothing: true,
-		}).Create(msg).Error
-}
 
 func (r *msgRepo) CreateBatchIfAbsent(ctx context.Context, msgs []entity.Message) error {
 	// An empty batch requires no database work.

@@ -22,6 +22,20 @@ const (
 	sendBuffer     = 32
 )
 
+// 上行限流配额。两种动作分开算,因为成本和用户预期都不一样。
+const (
+	// 弹幕:每秒 2 条,允许突发 5 条。
+	// 真人手动打字的上限大约就是这个量级,超过基本可以断定是脚本。
+	// 单条弹幕的成本是「一次广播扇出 + 一次落库」,是全项目最贵的上行动作。
+	chatRate, chatBurst = 2, 5
+
+	// 点赞:配额比弹幕宽得多。
+	// 它是「连点」型交互(用户会疯狂戳心),没有内容也不入库,
+	// 单次成本只有一次 Redis INCR。
+	// 但也必须有上限 —— 不限的话一条连接就能按线速打满 Redis。
+	likeRate, likeBurst = 10, 20
+)
+
 // Client represents a user connected to a live room through websocket.
 type Client struct {
 	RoomID   int64
@@ -33,15 +47,24 @@ type Client struct {
 	// readOnly
 	Send      chan []byte
 	closeOnce sync.Once
+
+	// chatLimiter / likeLimiter 限制这条连接的上行速率。
+	//
+	// 是值而不是指针、也不带锁:它们只被本连接的 ReadPump goroutine
+	// 访问(Dispatch → Action.Execute 都在那个栈上)。原因见 ratelimit.go。
+	chatLimiter tokenBucket
+	likeLimiter tokenBucket
 }
 
 func NewClient(roomID int64, userId int64, username string, conn *websocket.Conn) *Client {
 	return &Client{
-		RoomID:   roomID,
-		UserID:   userId,
-		Conn:     conn,
-		Username: username,
-		Send:     make(chan []byte, sendBuffer),
+		RoomID:      roomID,
+		UserID:      userId,
+		Conn:        conn,
+		Username:    username,
+		Send:        make(chan []byte, sendBuffer),
+		chatLimiter: newTokenBucket(chatRate, chatBurst),
+		likeLimiter: newTokenBucket(likeRate, likeBurst),
 	}
 }
 

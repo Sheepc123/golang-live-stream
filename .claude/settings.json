@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:opensource.tencent.com)",
+      "WebFetch(domain:www.infinitensor.com)",
+      "WebFetch(domain:caomaolufei.github.io)",
+      "Bash(curl -sL --max-time 20 -A \"Mozilla/5.0\" \"https://www.infinitensor.com/camp/summer2026/stage/1\")",
+      "Bash(grep -oE '.{0,20}\\(大模型推理服务系统|LLM inference|晋级|项目阶段|通信与并行|Triton\\).{0,1200}')",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -sL --max-time 25 -A \"Mozilla/5.0\" -H \"Content-Type: application/json\" -X POST -d '{\"id\":103}' \"https://opensource.tencent.com/tosr/api/getSummerProjectPublic\" -o /tmp/p103.json)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

@@ -6,8 +6,6 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/model/entity"
 )
 
-
-
 // RoomResponse represents the response for frontend
 type RoomResponse struct {
 	ID          int64  `json:"id"`
@@ -29,7 +27,7 @@ type RoomListResponse struct {
 	Total int            `json:"total"`
 }
 
-func NewRoomResponse(room *entity.Room) RoomResponse {
+func NewRoomResponse(room *entity.Room, ViewerCount int64) RoomResponse {
 	return RoomResponse{
 		ID:          room.ID,
 		OwnerID:     room.OwnerId,
@@ -40,7 +38,7 @@ func NewRoomResponse(room *entity.Room) RoomResponse {
 		StreamURL:   room.StreamURL,
 		Description: room.Description,
 		Status:      room.Status,
-		ViewerCount: room.ViewerCount,
+		ViewerCount: ViewerCount,
 		CreatedAt:   room.CreatedAt.Format(time.RFC3339),
 	}
 
@@ -55,8 +53,13 @@ type CreateRoomRequest struct {
 	Description string `json:"description"`
 }
 
-// edit the status of living-room
-// Implement the live stream on/off feature
+// UpdateRoomRequest 只承载「房间资料」,不含 status。
+//
+// 直播状态由 POST /rooms/:id/live/start|stop 控制 —— 那两个接口
+// 还要建场次、重置/快照点赞数,不是单纯改一个字段。
+// 这里原来有一个 Status 字段,但 RoomService.UpdateRoom 从来没读过它:
+// 前端传什么都不生效。这种「看起来能用其实被忽略」的字段比缺字段更危险,
+// 它会让人写出一个不报错也不生效的调用,然后查半天。已删除。
 type UpdateRoomRequest struct {
 	Title       string `json:"title" binding:"required"`
 	ChannelName string `json:"anchor_name"`
@@ -64,5 +67,4 @@ type UpdateRoomRequest struct {
 	CoverURL    string `json:"cover_url"`
 	StreamURL   string `json:"stream_url"`
 	Description string `json:"description"`
-	Status      string `json:"status"` // "live" / "offline"
 }

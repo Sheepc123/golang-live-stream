@@ -152,14 +152,12 @@ func (a *Aggregator) flushRoomEvents() {
 		}
 		// 房间可能刚好在这一瞬间空了,deliver 会直接返回。
 		// 为这点浪费维护一个 activeRooms 的 set 不划算。
-		/*
-			flushRoomEvents 没有检查 submitbylocal 的返回值。而 drainAll 已经把数据从 buffer 里拿走了 —— 队列满导致 Submit 返回 false，这批「XX 进入了直播间」就彻底消失，没有任何重试。
-
-			这是有意的取舍吗？ 从工程判断上，是合理的：进出场提示是纯装饰性信息，丢了用户完全无感（大主播房间里这种提示本来就是刷屏噪音，很多人还会关掉）。而它跟计数的处理恰好相反，原因就是上面那张表 —— 状态可以重推，事件不行。
-
-				如果确实想要"尽力不丢"，唯一的办法是失败时把事件塞回 buffer：
-		*/ 
-	
+		//
+		// 这里刻意不检查 submitbylocal 的返回值:drainAll 已经把事件
+		// 取走了,队列满就等于这批「XX 进入了直播间」彻底丢失,不重试。
+		// 和计数的处理正好相反 —— 状态可以重推(下一秒的值覆盖上一秒),
+		// 事件不行(补发一条 10 秒前的「XX 进来了」只会让人困惑)。
+		// 进出场提示是装饰性信息,丢了用户无感;计数错了用户一眼就看出来。
 		a.mgr.submitbylocal(roomId, newRoomEventMessage(roomId, e))
 	}
 }

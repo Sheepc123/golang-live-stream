@@ -1,7 +1,6 @@
 package ws
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 )
@@ -95,13 +94,14 @@ func NewOnlineCountMessage(roomID int64, count int64) Message {
 	return msg
 }
 
-func NewLikeMessage(roomId int64, userId int64, username string) Message {
-	msg := newMessage(roomId, MessageTypeLike)
-	msg.UserID = userId
-	msg.Username = username
-	msg.Content = fmt.Sprintf("user: %s liked the stream ", username)
-	return msg
-}
+// 这里原来有一个 NewLikeMessage(单条「XX 点了个赞」)。
+// III.4 把点赞改成聚合推送后,LikeAction 只做 Redis INCR、
+// 只有 like_count 会下行,它就再没有调用者了 —— 已删除。
+//
+// 前端 DanmakuList 仍然能渲染 type="like",那是刻意留着的:
+// 万一以后要做「点赞飘心特效」还得靠它,而一个用不到的 case 分支
+// 在前端是零成本的。后端留一个没人调的构造函数就不一样了 ——
+// 下一个人会以为它还在链路上,照着它去推断行为。
 
 func NewLikeMessageCount(roomId int64, count int64) Message {
 	msg := newMessage(roomId, MessageTypeLikeCount)
@@ -116,5 +116,22 @@ func newRoomEventMessage(roomId int64, e *roomEvents) Message {
 	msg.Left = e.left
 	msg.JoinedMore = e.joinedOverflow
 	msg.LeftMore = e.leftOverflow
+	return msg
+}
+
+// NewJoinMessage / NewLeaveMessage 只在实验 C(即时广播)模式下使用。
+// 生产路径走 room_event 聚合,不会逐条发这两种消息。
+// 前端 DanmakuList 的 formatMessageContent 早就能渲染 join/leave 类型。
+func NewJoinMessage(roomId, userId int64, username string) Message {
+	msg := newMessage(roomId, MessageTypeJoin)
+	msg.UserID = userId
+	msg.Username = username
+	return msg
+}
+
+func NewLeaveMessage(roomId, userId int64, username string) Message {
+	msg := newMessage(roomId, MessageTypeLeave)
+	msg.UserID = userId
+	msg.Username = username
 	return msg
 }

@@ -8,27 +8,51 @@ import (
 	"github.com/Sheepc123/golang-live-stream/internal/repo"
 )
 
+type OnlineCounts interface {
+	Count(ctx context.Context, roomID int64) (int64, error)
+	BatchCount(ctx context.Context, roomIDs []int64) (map[int64]int64, error)
+}
+
 // 1.Room service
 type RoomService struct {
 	roomRepo repo.RoomRepo
+	online   OnlineCounts
 }
 
-func NewRoomService(r repo.RoomRepo) *RoomService {
-	return &RoomService{roomRepo: r}
+func NewRoomService(r repo.RoomRepo, online OnlineCounts) *RoomService {
+	return &RoomService{roomRepo: r, online: online}
 }
 
-func (s *RoomService) RoomList(ctx context.Context) ([]entity.Room, error) {
+func (s *RoomService) RoomList(ctx context.Context) ([]entity.Room, map[int64]int64, error) {
+	rooms, err := s.roomRepo.RoomList(ctx)
 
-	return s.roomRepo.RoomList(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rooms, s.onlineFor(ctx, rooms), nil
 }
 
-func (s *RoomService) GetRoomByID(ctx context.Context, id int64) (*entity.Room, error) {
-	return s.roomRepo.FindByRoomID(ctx, id)
+func (s *RoomService) GetRoomByID(ctx context.Context, id int64) (*entity.Room, int64, error) {
+	room, err := s.roomRepo.FindByRoomID(ctx, id)
+	if err != nil {
+		return nil, 0, err
+	}
+	n, err := s.online.Count(ctx, id)
+	if err != nil {
+		n = 0
+	}
+	return room, n, nil
 }
 
-func (s *RoomService) ListMyRoom(ctx context.Context, ownerId int64) ([]entity.Room, error) {
+func (s *RoomService) ListMyRoom(ctx context.Context, ownerId int64) ([]entity.Room, map[int64]int64, error) {
 
-	return s.roomRepo.ListMyRoom(ctx, ownerId)
+	rooms, err := s.roomRepo.ListMyRoom(ctx, ownerId)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return rooms, s.onlineFor(ctx, rooms), nil
 }
 
 func (s *RoomService) Create(ctx context.Context, ownerId int64, req *model.CreateRoomRequest) (*entity.Room, error) {
@@ -41,23 +65,21 @@ func (s *RoomService) Create(ctx context.Context, ownerId int64, req *model.Crea
 		StreamURL:   req.StreamURL,
 		Description: req.Description,
 		Status:      "offline", // 新房间默认未开播
-		ViewerCount: 0,
 	}
-	err := s.roomRepo.Create(ctx, room)
-	if err != nil {
+	if err := s.roomRepo.Create(ctx, room); err != nil {
 		return nil, err
 	}
 	return room, nil
 }
 
-func (s *RoomService) UpdateRoom(ctx context.Context, ownerID int64, roomID int64, req *model.UpdateRoomRequest) (*entity.Room, error) {
+func (s *RoomService) UpdateRoom(ctx context.Context, ownerID int64, roomID int64, req *model.UpdateRoomRequest) (*entity.Room, int64, error) {
 	room, err := s.roomRepo.FindByRoomID(ctx, roomID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if ownerID != room.OwnerId {
-		return nil, repo.ErrRoomForbidden
+		return nil, 0, repo.ErrRoomForbidden
 	}
 
 	room.Title = req.Title
@@ -69,10 +91,15 @@ func (s *RoomService) UpdateRoom(ctx context.Context, ownerID int64, roomID int6
 
 	// 4. 落库
 	if err := s.roomRepo.UpdateProfile(ctx, room); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return room, nil
+	n, err := s.online.Count(ctx, roomID)
+	if err != nil {
+		n = 0
+	}
+
+	return room, n, nil
 }
 
 func (s *RoomService) DeleteRoom(ctx context.Context, ownerId int64, roomId int64) error {
@@ -87,4 +114,19 @@ func (s *RoomService) DeleteRoom(ctx context.Context, ownerId int64, roomId int6
 	}
 
 	return s.roomRepo.Delete(ctx, roomId)
+}
+
+func (s *RoomService) onlineFor(ctx context.Context, rooms []entity.Room) map[int64]int64 {
+	if len(rooms) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(rooms))
+	for i := range rooms {
+		ids = append(ids, rooms[i].ID)
+	}
+	counts, err := s.online.BatchCount(ctx, ids)
+	if err != nil {
+		return nil // 优雅降级:列表照常返回,人数显示 0
+	}
+	return counts
 }

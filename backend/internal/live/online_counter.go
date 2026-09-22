@@ -149,3 +149,38 @@ func (c *OnlineCounter) Peak(ctx context.Context, sessionId int64) (int64, error
 	}
 	return n, nil
 }
+
+
+// BatchCount pipeline get the online counts from multiply rooms
+func (c *OnlineCounter) BatchCount(ctx context.Context, roomIDs []int64) (map[int64]int64, error) {
+	if len(roomIDs) == 0 {
+		return nil, nil
+	}
+
+	pipe := c.rdb.Pipeline()
+	cmds := make([]*redis.IntCmd, len(roomIDs))
+
+	for i, roomID := range roomIDs {
+		cmds[i] = pipe.HLen(ctx, ViewersKey(roomID))
+	}
+
+	// if key is none, HLEN returns the 0 instead of nil.
+	// redis.GET
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		logger.L().Error("batch online count fail",
+			zap.Int("rooms", len(roomIDs)), zap.Error(err),
+		)
+		return nil, err
+	}
+
+	out := make(map[int64]int64, len(roomIDs))
+	for i, roomID := range roomIDs {
+		n, err := cmds[i].Result()
+		if err != nil {
+			continue // 单个房间失败就跳过,不拖垮整批
+		}
+		out[roomID] = n
+	}
+	return out, nil
+
+}
