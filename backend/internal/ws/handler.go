@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/config"
@@ -21,6 +22,9 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 
+	// 写缓冲从池里拿,写完归还。空闲连接不持有写缓冲 ——
+	// 6 万连接里绝大多数时候只有少数在写。
+	WriteBufferPool: &sync.Pool{},
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},

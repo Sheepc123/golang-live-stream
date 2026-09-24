@@ -22,6 +22,9 @@ const (
 	sendBuffer     = 32
 )
 
+// newline 是合并帧里多条 JSON 之间的分隔符(NDJSON)。
+var newline = []byte{'\n'}
+
 // 上行限流配额。两种动作分开算,因为成本和用户预期都不一样。
 const (
 	// 弹幕:每秒 2 条,允许突发 5 条。
@@ -113,7 +116,6 @@ func (c *Client) WritePump() {
 		select {
 
 		case payload, ok := <-c.Send:
-
 			if !ok {
 				c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -122,16 +124,50 @@ func (c *Client) WritePump() {
 
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 
-			if err := c.Conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+			// ── 合并写:把通道里当前积压的消息塞进同一个 WebSocket 帧 ──
+			//
+			// 压测火焰图显示 55% 的 CPU 在 write 系统调用上,每条消息一次。
+			// NextWriter 拿到一个帧的写入器,往里写多条、用 '\n' 分隔,
+			// Close 时才真正发出 —— N 条消息一次 syscall。
+			//
+			// 不加定时器攒批:低负载时通道里只有这一条,立刻发,零额外延迟;
+			// 高负载时 WritePump 每次被调度到,通道里已经堆了好几条,
+			// 合并比例随拥塞自动上升。这是「自适应批处理」,不用调参数。
+			//
+			// 上限 maxBatch 防止一个帧无限长:通道容量是 32,
+			// 所以一帧最多 32 条,和 sendBuffer 对齐即可。
+			w, err := c.Conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(payload)
+			n := 1
+		drain:
+			for n < sendBuffer {
+				select {
+				case more, ok := <-c.Send:
+					if !ok {
+						break drain // 通道关了,先把手上的发完,下一轮再处理 Close
+					}
+					w.Write(newline)
+					w.Write(more)
+					n++
+				default:
+					break drain // 通道空了,不等
+				}
+			}
+			if err := w.Close(); err != nil {
 				if logger.DebugEnabled() {
 					logger.L().Debug("write pump stopped",
 						zap.Int64("user_id", c.UserID),
 						zap.Int64("room_id", c.RoomID),
+						zap.Int("batch", n),
 						zap.Error(err),
 					)
 				}
 				return
 			}
+			metrics.WSWriteBatch.Observe(float64(n))
 
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))

@@ -10,7 +10,9 @@
       "Bash(curl -sL --max-time 25 -A \"Mozilla/5.0\" -H \"Content-Type: application/json\" -X POST -d '{\"id\":103}' \"https://opensource.tencent.com/tosr/api/getSummerProjectPublic\" -o /tmp/p103.json)",
       "Read(//tmp/**)",
       "Bash(cd /home/sheepc/projects/golang-live-stream/backend && grep -rn -E '^//go:build|os.Getenv|t.Skip|miniredis' --include=*_test.go . | grep -v node_modules; echo ----; sed -n 1,40p cmd/consumer/main_test.go; echo ----; cat scripts/test-kafka-producer.sh | head -40; echo ----; ls docs 2>/dev/null; sed -n 1,30p ../docs/kafka-producer-testing.md)",
-      "Read(//home/sheepc/projects/docs/**)"
+      "Read(//home/sheepc/projects/docs/**)",
+      "Bash(grep -v \"^--$\")",
+      "Bash(awk '{print \"raw length:\", length\\($0\\)}')"
     ]
   }
 }

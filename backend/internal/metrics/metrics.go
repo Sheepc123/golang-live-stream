@@ -66,6 +66,17 @@ var (
 		Help:      "Total WebSocket handshakes rejected before upgrade, by reason",
 	}, []string{"reason"})
 
+	// WSWriteBatch 每次 write 系统调用合并了多少条消息。
+	// 这是 III.8 合并写的直接证据:低负载时 p50 应为 1,
+	// 高负载时应明显大于 1。如果压测下仍是 1,说明合并没起作用。
+	WSWriteBatch = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: namespace,
+		Subsystem: "ws",
+		Name:      "write_batch_size",
+		Help:      "Messages merged into one WebSocket frame per write",
+		Buckets:   []float64{1, 2, 3, 4, 6, 8, 12, 16, 24, 32},
+	})
+
 	// BroadcastDuration 单次房间广播(deliver)的耗时分布。
 	//
 	// Bucket 刻意设得很小:纯内存操作应该在微秒级。
