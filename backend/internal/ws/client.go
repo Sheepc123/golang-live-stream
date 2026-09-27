@@ -122,13 +122,16 @@ func (c *Client) WritePump() {
 				return
 			}
 
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			// start 同时用于写超时和写耗时指标,不额外多调一次 time.Now。
+			start := time.Now()
+			c.Conn.SetWriteDeadline(start.Add(writeWait))
 
 			// ── 合并写:把通道里当前积压的消息塞进同一个 WebSocket 帧 ──
 			//
 			// 压测火焰图显示 55% 的 CPU 在 write 系统调用上,每条消息一次。
 			// NextWriter 拿到一个帧的写入器,往里写多条、用 '\n' 分隔,
 			// Close 时才真正发出 —— N 条消息一次 syscall。
+			// (前提是这一帧不超过写缓冲 WriteBufferSize,见 metrics.WSWriteBytes。)
 			//
 			// 不加定时器攒批:低负载时通道里只有这一条,立刻发,零额外延迟;
 			// 高负载时 WritePump 每次被调度到,通道里已经堆了好几条,
@@ -141,7 +144,7 @@ func (c *Client) WritePump() {
 				return
 			}
 			w.Write(payload)
-			n := 1
+			n, size := 1, len(payload)
 		drain:
 			for n < sendBuffer {
 				select {
@@ -152,6 +155,7 @@ func (c *Client) WritePump() {
 					w.Write(newline)
 					w.Write(more)
 					n++
+					size += 1 + len(more)
 				default:
 					break drain // 通道空了,不等
 				}
@@ -167,7 +171,9 @@ func (c *Client) WritePump() {
 				}
 				return
 			}
+			metrics.WSWriteDuration.Observe(time.Since(start).Seconds())
 			metrics.WSWriteBatch.Observe(float64(n))
+			metrics.WSWriteBytes.Add(float64(size))
 
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))

@@ -2,6 +2,7 @@ package ws
 
 import (
 	"sync"
+	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/logger"
 	"github.com/Sheepc123/golang-live-stream/internal/metrics"
@@ -13,6 +14,10 @@ type broadcastJob struct {
 	roomId  int64
 	msgType string
 	payload []byte
+
+	// enqueuedAt 是 Submit 的时刻。worker 取出时用它算排队时间,
+	// 这是端到端延迟里「广播池排队」那一段。
+	enqueuedAt time.Time
 }
 
 // Broadcastpool is a shared worker pool for room broadcasts.
@@ -51,6 +56,8 @@ func (p *BroadcastPool) runWoker(index int) {
 	defer p.wg.Done()
 
 	for job := range p.queues[index] {
+		metrics.BroadcastQueueWait.Observe(time.Since(job.enqueuedAt).Seconds())
+
 		if logger.DebugEnabled() {
 			logger.L().Debug("broadcast job",
 				zap.Int("worker", index),
@@ -75,9 +82,10 @@ func (p *BroadcastPool) Start() {
 func (p *BroadcastPool) Submit(roomId int64, msgType string, payload []byte) bool {
 	idx := int(roomId % int64(p.workers))
 	job := broadcastJob{
-		roomId:  roomId,
-		msgType: msgType,
-		payload: payload,
+		roomId:     roomId,
+		msgType:    msgType,
+		payload:    payload,
+		enqueuedAt: time.Now(),
 	}
 
 	select {

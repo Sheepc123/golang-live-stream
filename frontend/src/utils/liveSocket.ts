@@ -85,14 +85,20 @@ export class LiveSocket {
     }
 
     socket.onmessage = (event) => {
-      let message: WSMessage
-      try {
-        message = JSON.parse(event.data) as WSMessage
-      } catch {
-        this.options.onInvalidMessage()
-        return
+      // 服务端可能把多条消息合并进一个帧,用 '\n' 分隔(NDJSON)。
+      // 单条消息就是没有换行的特例,同一段代码处理。
+      const lines = (event.data as string).split('\n')
+      for (const line of lines) {
+        if (!line) continue
+        let message: WSMessage
+        try {
+          message = JSON.parse(line) as WSMessage
+        } catch {
+          this.options.onInvalidMessage()
+          continue
+        }
+        this.options.onMessage(message)
       }
-      this.options.onMessage(message)
     }
 
     socket.onerror = () => {

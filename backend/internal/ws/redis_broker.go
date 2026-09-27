@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Sheepc123/golang-live-stream/internal/logger"
+	"github.com/Sheepc123/golang-live-stream/internal/metrics"
 	"go.uber.org/zap"
 )
 
@@ -58,7 +59,11 @@ func (m *Manager) publish(roomId int64, msg Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	if err := m.rdb.Publish(ctx, broadcastChannelString(roomId, msg.Type), data).Err(); err != nil {
+	start := time.Now()
+	err = m.rdb.Publish(ctx, broadcastChannelString(roomId, msg.Type), data).Err()
+	metrics.RedisPublishDuration.Observe(time.Since(start).Seconds())
+
+	if err != nil {
 		logger.L().Error("redis publish fail",
 			zap.Int64("room_id", roomId),
 			zap.Error(err),

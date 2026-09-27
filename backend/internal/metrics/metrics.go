@@ -77,6 +77,33 @@ var (
 		Buckets:   []float64{1, 2, 3, 4, 6, 8, 12, 16, 24, 32},
 	})
 
+	// WSWriteDuration WritePump 一次合并写(NextWriter → Close)的耗时。
+	//
+	// 这是端到端延迟里「服务端写 socket」这一段。正常是微秒级;
+	// socket 发送缓冲满了 write 就会阻塞,这个值会跳到毫秒甚至秒级 ——
+	// 说明对端(或内核)收不过来,消息正在内核缓冲里排队。
+	WSWriteDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: namespace,
+		Subsystem: "ws",
+		Name:      "write_duration_seconds",
+		Help:      "Duration of one merged WebSocket write (NextWriter to Close)",
+		Buckets:   prometheus.ExponentialBuckets(0.000001, 2, 22), // 1µs ~ 2s
+	})
+
+	// WSWriteBytes 合并写发出的消息字节数(不含帧头)。
+	//
+	// 除以 write_batch_size 的 count 就是「每次合并写平均多少字节」。
+	// 这个数决定了合并写的真实效果:gorilla 的写缓冲只有 WriteBufferSize
+	// (当前 1024 B),一帧写满缓冲就会先把这一段作为分片帧发出去 ——
+	// 每 1 KB 仍然是一次 write。平均字节数远超 1 KB 时,
+	// 「一次合并 = 一次系统调用」就不成立了,要考虑调大 WriteBufferSize。
+	WSWriteBytes = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "ws",
+		Name:      "write_bytes_total",
+		Help:      "Total message bytes written by merged WebSocket writes (excluding frame headers)",
+	})
+
 	// BroadcastDuration 单次房间广播(deliver)的耗时分布。
 	//
 	// Bucket 刻意设得很小:纯内存操作应该在微秒级。
@@ -90,6 +117,39 @@ var (
 			0.00001, 0.00005, 0.0001, 0.0005,
 			0.001, 0.005, 0.01, 0.05, 0.1,
 		},
+	})
+
+	// BroadcastQueueWait 一个广播 job 在 BroadcastPool 队列里等了多久
+	// (Submit → worker 取出)。
+	//
+	// 和 BroadcastDuration(deliver 本身)对照着看:
+	//   - deliver 快、排队久 → worker 被某个房间占住了(热点房间 / 串行点)
+	//   - 两者都快、端到端却慢 → 时间花在 Send 通道、内核缓冲或客户端
+	//
+	// 每个 job 记一次(不是每个客户端一次),成本可以忽略。
+	// 桶按 2 倍递增,分位数的插值误差不超过一个桶宽。
+	BroadcastQueueWait = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: namespace,
+		Name:      "broadcast_queue_wait_seconds",
+		Help:      "Time a broadcast job waits in the BroadcastPool queue before a worker picks it up",
+		Buckets:   prometheus.ExponentialBuckets(0.00001, 2, 21), // 10µs ~ 10s
+	})
+)
+
+// ============ Redis ============
+
+var (
+	// RedisPublishDuration 一次跨实例广播 PUBLISH 的往返耗时。
+	//
+	// 它在发弹幕那个人的 ReadPump 里同步执行,所以直接加在上行路径上;
+	// 也是端到端延迟里「Redis 这一跳」服务端能看到的部分
+	// (Redis 把消息推回订阅者的那半程看不到,只能从端到端里减出来)。
+	RedisPublishDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: namespace,
+		Subsystem: "redis",
+		Name:      "publish_duration_seconds",
+		Help:      "Round-trip duration of one Redis PUBLISH for cross-instance broadcast",
+		Buckets:   prometheus.ExponentialBuckets(0.00005, 2, 16), // 50µs ~ 1.6s
 	})
 )
 

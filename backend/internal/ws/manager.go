@@ -233,6 +233,7 @@ func (m *Manager) deliver(roomId int64, msgType string, payload []byte) {
 			dropped++
 		}
 	}
+
 	if sent > 0 {
 		down.Add(float64(sent))
 	}
@@ -285,7 +286,6 @@ func (m *Manager) Unregister(client *Client) {
 	if len(clients) == 0 {
 		delete(m.rooms, client.RoomID)
 	}
-
 }
 
 // BroadcastToRoom use redis Publish
